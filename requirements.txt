@@ -1,0 +1,33 @@
+# ── Telegram Bot ──────────────────────────────────────────────────────────────
+python-telegram-bot==20.7
+
+# ── HTTP client (async) ───────────────────────────────────────────────────────
+httpx==0.27.0
+
+# ── Database — Supabase (Postgres) ────────────────────────────────────────────
+sqlalchemy==2.0.30
+asyncpg==0.29.0          # async Postgres driver for Supabase
+psycopg2-binary==2.9.9   # sync driver (needed for some SQLAlchemy ops)
+
+# ── Local dev fallback (SQLite) ───────────────────────────────────────────────
+aiosqlite==0.20.0        # only used if SUPABASE_DB_URL is not set
+
+# ── Scheduler ─────────────────────────────────────────────────────────────────
+apscheduler==3.10.4
+
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── Data validation ───────────────────────────────────────────────────────────
+pydantic==2.7.1
+
+# ── Testing ───────────────────────────────────────────────────────────────────
+pytest==8.2.0
+pytest-asyncio==0.23.7
+
+# ── Voice transcription ────────────────────────────────────────────────────────
+faster-whisper==1.0.3    # Whisper transcription for voice notes
+                         # System dep: ffmpeg (brew install ffmpeg / apt install ffmpeg)
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+python-dateutil==2.9.0
