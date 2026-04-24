@@ -1,0 +1,131 @@
+@import url('https://fonts.googleapis.com/css2?family=Alte+Haas+Grotesk:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Stocky AI design system — warm wet market: earthy greens, ambers, cream */
+
+@layer base {
+  html {
+    font-family: 'Alte Haas Grotesk', sans-serif;
+  }
+
+  :root {
+    /* Clean white background and soft gray containers */
+    --background: 0 0% 100%;
+    --foreground: 30 25% 15%;
+
+    --card: 0 0% 96.86%;
+    --card-foreground: 30 25% 15%;
+
+    --popover: 0 0% 96.86%;
+    --popover-foreground: 30 25% 15%;
+
+    /* Earthy market green */
+    --primary: 96 35% 32%;
+    --primary-foreground: 38 40% 96%;
+    --primary-soft: 96 30% 88%;
+
+    /* Warm amber accent */
+    --secondary: 35 70% 55%;
+    --secondary-foreground: 30 30% 12%;
+    --secondary-soft: 38 80% 92%;
+
+    --muted: 38 25% 90%;
+    --muted-foreground: 30 12% 42%;
+
+    --accent: 35 70% 55%;
+    --accent-foreground: 30 30% 12%;
+    --accent-soft: 38 80% 92%;
+
+    --destructive: 5 70% 48%;
+    --destructive-foreground: 38 40% 96%;
+    --destructive-soft: 5 75% 94%;
+
+    --warning: 32 90% 50%;
+    --warning-foreground: 30 30% 12%;
+    --warning-soft: 38 90% 92%;
+
+    --success: 142 50% 36%;
+    --success-foreground: 38 40% 96%;
+    --success-soft: 142 40% 92%;
+
+    /* Telegram brand */
+    --telegram: 200 78% 52%;
+    --telegram-foreground: 0 0% 100%;
+
+    --border: 35 25% 84%;
+    --input: 35 25% 84%;
+    --ring: 96 35% 32%;
+
+    --radius: 0.875rem;
+
+    /* Gradients */
+    --gradient-warm: linear-gradient(135deg, hsl(38 60% 94%), hsl(35 50% 88%));
+    --gradient-instinct: linear-gradient(135deg, hsl(38 90% 92%), hsl(35 80% 84%));
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 30 15% 10%;
+    --foreground: 38 30% 92%;
+    --card: 30 15% 13%;
+    --card-foreground: 38 30% 92%;
+    --popover: 30 15% 13%;
+    --popover-foreground: 38 30% 92%;
+    --primary: 96 30% 55%;
+    --primary-foreground: 30 25% 12%;
+    --primary-soft: 96 20% 22%;
+    --secondary: 35 70% 55%;
+    --secondary-foreground: 30 30% 12%;
+    --secondary-soft: 35 30% 22%;
+    --muted: 30 10% 20%;
+    --muted-foreground: 38 15% 65%;
+    --accent: 35 70% 55%;
+    --accent-foreground: 30 30% 12%;
+    --accent-soft: 35 30% 22%;
+    --destructive: 5 65% 50%;
+    --destructive-foreground: 38 30% 92%;
+    --destructive-soft: 5 30% 22%;
+    --warning: 32 90% 55%;
+    --warning-foreground: 30 30% 12%;
+    --warning-soft: 32 30% 22%;
+    --success: 142 45% 45%;
+    --success-foreground: 38 30% 92%;
+    --success-soft: 142 25% 20%;
+    --telegram: 200 78% 52%;
+    --telegram-foreground: 0 0% 100%;
+    --border: 30 10% 22%;
+    --input: 30 10% 22%;
+    --ring: 96 30% 55%;
+  }
+}
+
+@layer base {
+  * { }
+  html, body, #root { @apply h-full; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Alte Haas Grotesk', system-ui, sans-serif;
+    font-feature-settings: "ss01";
+  }
+  h1, h2, h3, .font-display {
+    font-family: 'Alte Haas Grotesk', system-ui, sans-serif;
+    font-feature-settings: "ss01";
+    letter-spacing: -0.015em;
+  }
+}
+
+@layer utilities {
+  .bg-gradient-warm { background-image: var(--gradient-warm); }
+  .bg-gradient-instinct { background-image: var(--gradient-instinct); }
+}
