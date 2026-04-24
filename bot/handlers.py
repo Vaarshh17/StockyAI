@@ -76,14 +76,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Route by message type
     if message.voice:
+        loading_msg = await update.message.reply_text(
+            "_Loading... This may take a moment._",
+            parse_mode="Markdown",
+        )
         file = await message.voice.get_file()
         voice_bytes = bytes(await file.download_as_bytearray())
         transcript = await transcribe_voice(voice_bytes)
         if not transcript:
+            await loading_msg.delete()
             await update.message.reply_text(
                 "⚠️ Maaf, tidak dapat dengar nota suara itu. Cuba lagi atau taip mesej anda."
             )
             return
+        await loading_msg.delete()
         # Echo back what was heard so user can confirm
         await update.message.reply_text(f'🎙️ _"{transcript}"_', parse_mode="Markdown")
         response = await run_agent(
