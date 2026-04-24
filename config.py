@@ -3,20 +3,25 @@ config.py — Central config for Stocky AI.
 All env vars loaded here. Import from here everywhere else.
 """
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
+# Always load .env from the same directory as this file, regardless of cwd
+load_dotenv(dotenv_path=Path(__file__).parent / ".env", override=True)
 
 # ── Telegram ──────────────────────────────────────────────────────────────────
 BOT_TOKEN: str = os.getenv("BOT_TOKEN", "")
 
-# ── Z.AI / GLM ────────────────────────────────────────────────────────────────
-GLM_API_KEY: str = os.getenv("GLM_API_KEY", "")
-GLM_MODEL: str   = os.getenv("GLM_MODEL", "glm-4v-plus")
-GLM_API_URL: str = os.getenv(
-    "GLM_API_URL",
-    "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-)
+# ── ILMU API (Z.ai / YTL AI Labs) ─────────────────────────────────────────────
+# Get from: console.ilmu.ai → API Keys (starts with sk-)
+ILMU_API_KEY: str = os.getenv("ILMU_API_KEY", "")
+ILMU_API_URL: str = os.getenv("ILMU_API_URL", "https://api.ilmu.ai/v1")
+
+# Two-model strategy:
+#   nemo-super      → complex reasoning (morning brief, instinct, draft messages)
+#   ilmu-nemo-nano  → lightweight tool calls (proactive scheduler jobs)
+MODEL_SMART: str = os.getenv("MODEL_SMART", "nemo-super")
+MODEL_FAST:  str = os.getenv("MODEL_FAST",  "ilmu-nemo-nano")
 
 # ── Supabase / Database ───────────────────────────────────────────────────────
 # Get from: Supabase Dashboard → Settings → Database → Connection string (URI)
@@ -39,11 +44,11 @@ DEMO_MODE:        bool = os.getenv("DEMO_MODE", "False").lower() == "true"
 def validate():
     errors = []
     if not BOT_TOKEN:
-        errors.append("BOT_TOKEN missing — get from @BotFather")
-    if not GLM_API_KEY and not DEMO_MODE:
-        errors.append("GLM_API_KEY missing — get from open.bigmodel.cn (set DEMO_MODE=True to bypass)")
+        errors.append("BOT_TOKEN missing — get from @BotFather on Telegram")
+    if not ILMU_API_KEY and not DEMO_MODE:
+        errors.append("ILMU_API_KEY missing — get from console.ilmu.ai (set DEMO_MODE=True to bypass)")
     if not SUPABASE_DB_URL and not DEMO_MODE:
         print("⚠️  SUPABASE_DB_URL not set — falling back to local SQLite (ok for dev)")
     if errors:
-        raise ValueError(f"Config errors:\n" + "\n".join(f"  ✗ {e}" for e in errors))
-    print("✅ Config validated.")
+        raise ValueError("Config errors:\n" + "\n".join(f"  ✗ {e}" for e in errors))
+    print(f"✅ Config validated. Model: {MODEL_SMART} | Key: {ILMU_API_KEY[:12]}...")

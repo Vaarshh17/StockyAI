@@ -107,6 +107,17 @@ class FamaBenchmark(Base):
     week_date    = Column(Date, nullable=False)
 
 
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+    user_id     = Column(Integer, primary_key=True)   # Telegram user_id
+    name        = Column(String, nullable=True)
+    language    = Column(String, default="English")
+    commodities = Column(Text, nullable=True)          # JSON array e.g. '["tomato","bayam"]'
+    city        = Column(String, default="Kuala Lumpur")
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 async def init_db():
     """Create all tables if they don't exist. Safe to call repeatedly."""
     async with engine.begin() as conn:

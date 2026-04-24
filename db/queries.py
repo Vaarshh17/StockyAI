@@ -3,9 +3,10 @@ db/queries.py — All database query functions.
 One function per tool. Returns plain dicts (not ORM objects) for easy JSON serialisation.
 Owner: Person 2
 """
+import json
 from datetime import date, datetime, timedelta
 from sqlalchemy import select, func, and_
-from db.models import AsyncSessionLocal, Inventory, Supplier, SupplierPrice, Trade, Receivable, FamaBenchmark
+from db.models import AsyncSessionLocal, Inventory, Supplier, SupplierPrice, Trade, Receivable, FamaBenchmark, UserProfile
 
 
 # ─── INVENTORY ────────────────────────────────────────────────────────────────
@@ -293,6 +294,50 @@ async def db_get_weekly_digest() -> dict:
         "best_commodity": revenue_rows[0][0] if revenue_rows else None,
         "worst_commodity": revenue_rows[-1][0] if len(revenue_rows) > 1 else None,
         "outstanding_credit_rm": round(total_credit, 2),
+    }
+
+
+# ─── USER PROFILE ────────────────────────────────────────────────────────────
+
+async def db_save_persona(user_id: int, persona: dict) -> None:
+    """Upsert a user's persona profile."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserProfile).where(UserProfile.user_id == user_id)
+        )
+        profile = result.scalar_one_or_none()
+        if profile:
+            profile.name        = persona.get("name")
+            profile.language    = persona.get("language", "English")
+            profile.commodities = json.dumps(persona.get("commodities", []))
+            profile.city        = persona.get("city", "Kuala Lumpur")
+            profile.updated_at  = datetime.utcnow()
+        else:
+            profile = UserProfile(
+                user_id     = user_id,
+                name        = persona.get("name"),
+                language    = persona.get("language", "English"),
+                commodities = json.dumps(persona.get("commodities", [])),
+                city        = persona.get("city", "Kuala Lumpur"),
+            )
+            session.add(profile)
+        await session.commit()
+
+
+async def db_get_persona(user_id: int) -> dict | None:
+    """Load a user's persona profile from DB."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(UserProfile).where(UserProfile.user_id == user_id)
+        )
+        profile = result.scalar_one_or_none()
+    if not profile:
+        return None
+    return {
+        "name":        profile.name,
+        "language":    profile.language,
+        "commodities": json.loads(profile.commodities) if profile.commodities else [],
+        "city":        profile.city,
     }
 
 

@@ -1,84 +1,95 @@
 """
-services/glm.py — GLM API client (Z.AI / Zhipu).
+services/glm.py — ILMU API client (Z.ai / YTL AI Labs).
 
-Handles all communication with the GLM API.
+Uses the OpenAI-compatible endpoint at api.ilmu.ai/v1.
+Model: ilmu-glm-5.1 (both MODEL_SMART and MODEL_FAST on Claw Free plan).
+
 Owner: Person 1
 """
-import base64
-import json
+import os
 import logging
-import httpx
-from config import GLM_API_KEY, GLM_API_URL, GLM_MODEL, DEMO_MODE
+from openai import AsyncOpenAI
+import config  # import module, not values — so we always get the live value
 
 logger = logging.getLogger(__name__)
 
+_client: AsyncOpenAI | None = None
 
-async def call_glm(messages: list, tools: list = None) -> dict:
+
+def _get_client() -> AsyncOpenAI:
+    """Lazy-init the ILMU client (OpenAI-compatible)."""
+    global _client
+    if _client is None:
+        key = config.ILMU_API_KEY or os.getenv("ILMU_API_KEY", "")
+        url = config.ILMU_API_URL or os.getenv("ILMU_API_URL", "https://api.ilmu.ai/v1")
+        logger.info(f"Creating ILMU client — key={key[:12]}... url={url}")
+        _client = AsyncOpenAI(api_key=key, base_url=url)
+    return _client
+
+
+async def call_llm(
+    messages: list,
+    tools: list = None,
+    use_fast_model: bool = False,
+) -> dict:
     """
-    Send messages to GLM and return the assistant's response dict.
+    Send messages to ILMU and return the assistant's response.
+
+    Args:
+        messages:       Full conversation history including system prompt.
+        tools:          Tool schemas. If provided, model may call them.
+        use_fast_model: If True, uses MODEL_FAST (currently ilmu-glm-5.1).
+                        Use for proactive scheduler jobs. Default False → MODEL_SMART.
 
     Returns:
-        dict with keys: 'content' (str | None), 'tool_calls' (list | None)
+        dict with keys:
+            'content'    (str | None)  — final text response
+            'tool_calls' (list | None) — list of tool call dicts
     """
-    if DEMO_MODE:
-        return await _mock_response(messages)
+    if config.DEMO_MODE:
+        return _mock_response(messages)
 
-    payload = {
-        "model": GLM_MODEL,
+    model = config.MODEL_FAST if use_fast_model else config.MODEL_SMART
+    client = _get_client()
+
+    kwargs: dict = {
+        "model": model,
         "messages": messages,
         "temperature": 0.3,
-        "max_tokens": 1024,
+        "max_tokens": 2048,
     }
     if tools:
-        payload["tools"] = tools
-        payload["tool_choice"] = "auto"
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = "auto"
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.post(
-            GLM_API_URL,
-            headers={
-                "Authorization": f"Bearer {GLM_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+    logger.debug(f"Calling ILMU [{model}] with {len(messages)} messages")
+    response = await client.chat.completions.create(**kwargs)
+    msg = response.choices[0].message
 
-    message = data["choices"][0]["message"]
-    logger.debug(f"GLM response: {message}")
-    return message
+    # Normalise tool_calls to plain dicts (same shape our dispatcher expects)
+    tool_calls = None
+    if msg.tool_calls:
+        tool_calls = [
+            {
+                "id": tc.id,
+                "type": "function",   # required by ILMU/GLM API
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments,
+                },
+            }
+            for tc in msg.tool_calls
+        ]
 
-
-def encode_image_to_base64(image_bytes: bytes) -> str:
-    """Convert raw image bytes to base64 string for GLM vision input."""
-    return base64.b64encode(image_bytes).decode("utf-8")
-
-
-def build_image_message(image_bytes: bytes, caption: str = "") -> dict:
-    """Build a GLM-compatible user message containing an image."""
-    b64 = encode_image_to_base64(image_bytes)
-    content = [
-        {
-            "type": "image_url",
-            "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-        }
-    ]
-    if caption:
-        content.append({"type": "text", "text": caption})
-    else:
-        content.append({
-            "type": "text",
-            "text": "Baca gambar ini dan ekstrak maklumat berkaitan inventori atau harga.",
-        })
-    return {"role": "user", "content": content}
+    logger.debug(f"ILMU [{model}] → content={bool(msg.content)} tools={len(tool_calls or [])}")
+    return {"content": msg.content, "tool_calls": tool_calls}
 
 
-async def _mock_response(messages: list) -> dict:
-    """Returns a canned response for demo/testing without hitting the API."""
+def _mock_response(messages: list) -> dict:
+    """Canned response for DEMO_MODE — no API call made."""
     last = messages[-1]
     text = last.get("content", "") if isinstance(last.get("content"), str) else ""
     return {
-        "content": f"[DEMO MODE] Saya terima: '{text[:60]}'. GLM API key belum dikonfigurasi.",
+        "content": f"[DEMO MODE] Received: '{text[:60]}'. Set DEMO_MODE=False and add ILMU_API_KEY to go live.",
         "tool_calls": None,
     }
