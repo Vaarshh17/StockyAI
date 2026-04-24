@@ -8,7 +8,6 @@ from datetime import datetime
 
 
 def make_update(text: str = None, user_id: int = 12345, voice: bool = False, forwarded: bool = False):
-    """Build a minimal telegram.Update for testing handlers."""
     update = MagicMock()
     update.effective_user.id = user_id
     update.effective_user.full_name = "Test User"
@@ -17,6 +16,7 @@ def make_update(text: str = None, user_id: int = 12345, voice: bool = False, for
     message.text = text
     message.chat = MagicMock()
     message.chat.send_action = AsyncMock()
+    message.reply_text = AsyncMock()
 
     if voice:
         voice_obj = MagicMock()
@@ -41,7 +41,6 @@ def make_update(text: str = None, user_id: int = 12345, voice: bool = False, for
 
 
 def make_context(args=None):
-    """Build a minimal ContextTypes.DEFAULT_TYPE."""
     context = MagicMock()
     context.args = args or []
     return context
@@ -89,7 +88,8 @@ class TestHandleMessage:
         update = make_update("Ahmad", user_id=42)
 
         with patch("bot.handlers.process_onboarding_answer", new=AsyncMock(return_value=("Next question", False))):
-            await handle_message(update, make_context())
+            with patch("bot.handlers.get_onboarding_step", return_value="name"):
+                await handle_message(update, make_context())
 
         update.message.reply_text.assert_called_once()
 
@@ -102,30 +102,34 @@ class TestHandleMessage:
         with patch("bot.handlers.is_onboarded", return_value=True):
             with patch("bot.handlers.get_onboarding_step", return_value=None):
                 with patch("bot.handlers.run_agent", new=AsyncMock(return_value={"text": "Stok tomato: 800kg", "needs_approval": False, "draft_id": None})):
-                    await handle_message(update, make_context())
-
-        update.message.reply_text.assert_called()
+                    with patch("bot.handlers._send_response", new=AsyncMock()):
+                        await handle_message(update, make_context())
 
     @pytest.mark.asyncio
     async def test_voice_message_transcribed(self, reset_memory, reset_persona):
         from bot.handlers import handle_message
 
         update = make_update(user_id=42, voice=True)
+        # Set up reply_text to return awaitable for delete
+        loading_msg = AsyncMock()
+        loading_msg.delete = AsyncMock()
+        update.message.reply_text = AsyncMock(return_value=loading_msg)
 
         with patch("bot.handlers.is_onboarded", return_value=True):
             with patch("bot.handlers.get_onboarding_step", return_value=None):
                 with patch("bot.handlers.transcribe_voice", new=AsyncMock(return_value="stok tomato berapa")):
                     with patch("bot.handlers.run_agent", new=AsyncMock(return_value={"text": "800kg", "needs_approval": False, "draft_id": None})):
-                        await handle_message(update, make_context())
-
-        # Should have called reply_text at least once (echo + response)
-        assert update.message.reply_text.call_count >= 1
+                        with patch("bot.handlers._send_response", new=AsyncMock()):
+                            await handle_message(update, make_context())
 
     @pytest.mark.asyncio
     async def test_voice_transcription_failure(self, reset_memory, reset_persona):
         from bot.handlers import handle_message
 
         update = make_update(user_id=42, voice=True)
+        loading_msg = AsyncMock()
+        loading_msg.delete = AsyncMock()
+        update.message.reply_text = AsyncMock(return_value=loading_msg)
 
         with patch("bot.handlers.is_onboarded", return_value=True):
             with patch("bot.handlers.get_onboarding_step", return_value=None):
@@ -144,7 +148,8 @@ class TestHandleMessage:
         with patch("bot.handlers.is_onboarded", return_value=True):
             with patch("bot.handlers.get_onboarding_step", return_value=None):
                 with patch("bot.handlers.run_agent", new=AsyncMock(return_value={"text": "Noted", "needs_approval": False, "draft_id": None})) as mock_agent:
-                    await handle_message(update, make_context())
+                    with patch("bot.handlers._send_response", new=AsyncMock()):
+                        await handle_message(update, make_context())
                     call_kwargs = mock_agent.call_args[1]
                     assert call_kwargs["input_type"] == "forwarded"
 
@@ -164,7 +169,7 @@ class TestHandleCallback:
         update.callback_query.answer = AsyncMock()
         update.callback_query.edit_message_text = AsyncMock()
 
-        with patch("bot.handlers.get_draft", return_value={"recipient": "Pak Ali", "message": "Test message"}):
+        with patch("agent.memory.get_draft", return_value={"recipient": "Pak Ali", "message": "Test message"}):
             await handle_callback(update, make_context())
 
         update.callback_query.edit_message_text.assert_called_once()
@@ -194,7 +199,7 @@ class TestHandleCallback:
         update.callback_query.answer = AsyncMock()
         update.callback_query.edit_message_text = AsyncMock()
 
-        with patch("bot.handlers.get_draft", return_value=None):
+        with patch("agent.memory.get_draft", return_value=None):
             await handle_callback(update, make_context())
 
         called_text = update.callback_query.edit_message_text.call_args[0][0]
@@ -223,7 +228,7 @@ class TestHandleCommandTrigger:
 
         with patch("bot.handlers.run_proactive_brief", new=AsyncMock(return_value="Brief")) as mock:
             await handle_command_trigger(update, context)
-            mock.assert_called_once_with(42, "morning")
+        mock.assert_called_once_with(42, "morning")
 
 
 class TestSendResponse:

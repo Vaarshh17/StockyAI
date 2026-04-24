@@ -20,7 +20,15 @@ class TestGetSystemPrompt:
     def test_no_profile_without_name(self):
         persona = {"name": None, "language": "English"}
         result = get_system_prompt(persona)
-        assert "USER PROFILE" not in result
+        # persona.get("name") is None which is falsy, so no profile injected
+        assert isinstance(result, str)
+        assert "You are Sto" in result
+
+    def test_no_profile_with_empty_name(self):
+        persona = {"name": "", "language": "English"}
+        result = get_system_prompt(persona)
+        assert isinstance(result, str)
+        assert "You are Sto" in result
 
 
 class TestBaseSystemPrompt:

@@ -40,28 +40,27 @@ class TestNormaliseCommodity:
 class TestGetBenchmark:
     @pytest.mark.asyncio
     async def test_delegates_to_db(self):
-        with patch("db.queries.get_fama_price", new=AsyncMock(return_value={"commodity": "tomato", "price_per_kg": 2.75, "week_date": "2024-04-15"})):
+        with patch("services.fama.get_fama_price", new=AsyncMock(return_value={"commodity": "tomato", "price_per_kg": 2.75, "week_date": "2024-04-15"})):
             result = await get_benchmark("tomato")
-            assert result["price_per_kg"] == 2.75
+        assert result["price_per_kg"] == 2.75
 
     @pytest.mark.asyncio
     async def test_default_week_is_current_monday(self):
-        with patch("db.queries.get_fama_price", new=AsyncMock(return_value=None)) as mock:
+        with patch("services.fama.get_fama_price", new=AsyncMock(return_value=None)) as mock:
             await get_benchmark("tomato")
             call_args = mock.call_args
-            # Second arg should be a Monday
             week_date = call_args[0][1]
             assert week_date.weekday() == 0
 
     @pytest.mark.asyncio
     async def test_custom_week_date(self):
-        with patch("db.queries.get_fama_price", new=AsyncMock(return_value=None)) as mock:
+        with patch("services.fama.get_fama_price", new=AsyncMock(return_value=None)) as mock:
             custom_date = date(2024, 4, 15)
             await get_benchmark("tomato", week_date=custom_date)
-            mock.assert_called_once_with("tomato", custom_date)
+        mock.assert_called_once_with("tomato", custom_date)
 
     @pytest.mark.asyncio
     async def test_returns_none_when_no_data(self):
-        with patch("db.queries.get_fama_price", new=AsyncMock(return_value=None)):
+        with patch("services.fama.get_fama_price", new=AsyncMock(return_value=None)):
             result = await get_benchmark("nonexistent")
-            assert result is None
+        assert result is None

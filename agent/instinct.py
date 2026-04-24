@@ -71,7 +71,7 @@ async def get_instinct() -> str:
             db_get_weekly_digest, db_get_credit,
             db_get_price_trend,
         )
-        from services.glm import call_glm
+        from services.glm import call_llm
 
         # Gather all signal streams
         inventory = await db_get_inventory()
@@ -106,7 +106,7 @@ async def get_instinct() -> str:
             {"role": "user",   "content": context},
         ]
 
-        response = await call_glm(messages, tools=None)
+        response = await call_llm(messages, tools=None)
         result = response.get("content", "").strip()
 
         if not result:

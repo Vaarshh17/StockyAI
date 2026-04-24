@@ -2,7 +2,7 @@
 tests/unit/test_weather.py — Unit tests for services/weather.py
 """
 import pytest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 from services.weather import get_forecast, _weather_code_to_label, CITY_COORDS
 
 
@@ -33,8 +33,8 @@ class TestCityCoords:
         for city, (lat, lon) in CITY_COORDS.items():
             assert isinstance(lat, float)
             assert isinstance(lon, float)
-            assert 1 < lat < 7  # Malaysia latitude range
-            assert 100 < lon < 120  # Malaysia longitude range
+            assert 1 < lat < 7
+            assert 100 < lon < 120
 
 
 class TestGetForecast:
@@ -49,37 +49,46 @@ class TestGetForecast:
                 "temperature_2m_max": [33.0, 30.0],
             }
         }
-        with patch("httpx.AsyncClient.get", new=AsyncMock()) as mock_get:
-            mock_resp = AsyncMock()
-            mock_resp.json.return_value = mock_response
-            mock_resp.raise_for_status = AsyncMock()
-            mock_get.return_value = mock_resp
 
-            # Patch the AsyncClient context manager
-            with patch("httpx.AsyncClient") as mock_client:
-                client_instance = AsyncMock()
-                client_instance.get.return_value = mock_resp
-                client_instance.__aenter__ = AsyncMock(return_value=client_instance)
-                client_instance.__aexit__ = AsyncMock(return_value=False)
-                mock_client.return_value = client_instance
+        mock_resp = AsyncMock()
+        mock_resp.json = MagicMock(return_value=mock_response)
+        mock_resp.raise_for_status = AsyncMock()
 
-                result = await get_forecast("Kuala Lumpur")
-                assert len(result) == 2
-                assert result[0]["condition"] == "Cerah"
-                assert result[1]["is_rainy"] is True
+        client_instance = AsyncMock()
+        client_instance.get = AsyncMock(return_value=mock_resp)
+        client_instance.__aenter__ = AsyncMock(return_value=client_instance)
+        client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("services.weather.httpx.AsyncClient", return_value=client_instance):
+            result = await get_forecast("Kuala Lumpur")
+
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0]["condition"] == "Cerah"
+        assert result[1]["is_rainy"] is True
 
     @pytest.mark.asyncio
     async def test_default_city_is_kuala_lumpur(self):
-        with patch("httpx.AsyncClient") as mock_client:
-            client_instance = AsyncMock()
-            mock_resp = AsyncMock()
-            mock_resp.json.return_value = {"daily": {"time": [], "weathercode": [], "precipitation_sum": [], "precipitation_probability_max": [], "temperature_2m_max": []}}
-            mock_resp.raise_for_status = AsyncMock()
-            client_instance.get.return_value = mock_resp
-            client_instance.__aenter__ = AsyncMock(return_value=client_instance)
-            client_instance.__aexit__ = AsyncMock(return_value=False)
-            mock_client.return_value = client_instance
+        mock_response = {
+            "daily": {
+                "time": [],
+                "weathercode": [],
+                "precipitation_sum": [],
+                "precipitation_probability_max": [],
+                "temperature_2m_max": [],
+            }
+        }
 
+        mock_resp = AsyncMock()
+        mock_resp.json = MagicMock(return_value=mock_response)
+        mock_resp.raise_for_status = AsyncMock()
+
+        client_instance = AsyncMock()
+        client_instance.get = AsyncMock(return_value=mock_resp)
+        client_instance.__aenter__ = AsyncMock(return_value=client_instance)
+        client_instance.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("services.weather.httpx.AsyncClient", return_value=client_instance):
             result = await get_forecast("Nonexistent City")
-            # Should fallback to KL coords
-            assert isinstance(result, list)
+
+        assert isinstance(result, list)
