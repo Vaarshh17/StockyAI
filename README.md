@@ -3,7 +3,13 @@
 > A proactive decision intelligence agent for Malaysian wet market wholesalers.  
 > Lives entirely on Telegram. Speaks Malay, Mandarin, and English. Watches your business while you sleep.
 
-**UM Hackathon 2026 — Domain: AI for Economic Empowerment & Decision Intelligence**
+### **UM Hackathon 2026 — Domain: AI for Economic Empowerment & Decision Intelligence**<br>
+**Pitch Video**: \<link><br>
+**Pitch Deck**:  ```docs/Stocky_AI_Pitch Deck.pdf```<br><br>
+**PRD (Product)**: ```docs/Stocky_AI_PRD.pdf```<br>
+**SAD (System)**: ```docs/Stocky_AI_SAD.pdf```<br>
+**TAD (Testing)**: ```docs/Stocky_AI_TAD.pdf```<br>
+
 
 ---
 
