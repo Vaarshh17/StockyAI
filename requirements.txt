@@ -27,6 +27,7 @@ faster-whisper>=1.0.0        # Whisper transcription for voice notes
 # ── Testing ───────────────────────────────────────────────────────────────────
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
+pytest-cov
 
 # ── Image OCR (delivery photo → inventory auto-update) ───────────────────────
 easyocr>=1.7.0               # OCR engine, downloads models on first run (~100MB)

@@ -27,12 +27,11 @@ class TestOnboardingFlow:
         assert "city" in reply.lower() or "🌤️" in reply
 
         # Step 4: City — completes onboarding
-        with patch("db.queries.db_save_persona", new=AsyncMock()):
+        with patch("agent.persona.db_save_persona", new=AsyncMock()):
             reply, complete = await process_onboarding_answer(1, "Kuala Lumpur")
         assert complete
         assert "Ahmad" in reply
 
-        # Verify persona is stored
         persona = get_persona(1)
         assert persona["name"] == "Ahmad"
         assert persona["language"] == "Bahasa Malaysia"
@@ -80,7 +79,7 @@ class TestLoadPersona:
     @pytest.mark.asyncio
     async def test_load_from_db_caches(self, reset_persona):
         from agent.persona import load_persona, _personas
-        with patch("db.queries.db_get_persona", new=AsyncMock(return_value={"name": "DB User", "language": "English", "commodities": [], "city": "KL"})):
+        with patch("agent.persona.db_get_persona", new=AsyncMock(return_value={"name": "DB User", "language": "English", "commodities": [], "city": "KL"})):
             result = await load_persona(5)
         assert result["name"] == "DB User"
         assert 5 in _personas
@@ -89,7 +88,7 @@ class TestLoadPersona:
     async def test_returns_cached_without_db_call(self, reset_persona):
         from agent.persona import load_persona, _personas
         _personas[6] = {"name": "Cached", "language": "English"}
-        with patch("db.queries.db_get_persona", new=AsyncMock()) as mock_db:
+        with patch("agent.persona.db_get_persona", new=AsyncMock()) as mock_db:
             result = await load_persona(6)
             mock_db.assert_not_called()
         assert result["name"] == "Cached"

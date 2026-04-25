@@ -13,7 +13,7 @@ class TestGetInstinct:
                 with patch("db.queries.db_get_credit", new=AsyncMock(return_value=[])):
                     with patch("db.queries.db_get_velocity", new=AsyncMock(return_value={"avg_daily_kg": 400})):
                         with patch("db.queries.db_get_price_trend", new=AsyncMock(return_value={"trend": "naik"})):
-                            with patch("services.glm.call_glm", new=AsyncMock(return_value={"content": "Stocky nampak sesuatu: tomato harga naik"})):
+                            with patch("services.glm.call_llm", new=AsyncMock(return_value={"content": "Stocky nampak sesuatu: tomato harga naik"})):
                                 from agent.instinct import get_instinct
                                 result = await get_instinct()
         assert "Stocky nampak" in result
@@ -25,7 +25,7 @@ class TestGetInstinct:
                 with patch("db.queries.db_get_credit", new=AsyncMock(return_value=[])):
                     with patch("db.queries.db_get_velocity", new=AsyncMock(return_value={})):
                         with patch("db.queries.db_get_price_trend", new=AsyncMock(return_value=None)):
-                            with patch("services.glm.call_glm", new=AsyncMock(return_value={"content": "Harga tomato naik"})):
+                            with patch("services.glm.call_llm", new=AsyncMock(return_value={"content": "Harga tomato naik"})):
                                 from agent.instinct import get_instinct
                                 result = await get_instinct()
         assert result.startswith("Stocky nampak sesuatu:")
@@ -37,7 +37,7 @@ class TestGetInstinct:
                 with patch("db.queries.db_get_credit", new=AsyncMock(return_value=[])):
                     with patch("db.queries.db_get_velocity", new=AsyncMock(return_value={})):
                         with patch("db.queries.db_get_price_trend", new=AsyncMock(return_value=None)):
-                            with patch("services.glm.call_glm", new=AsyncMock(return_value={"content": ""})):
+                            with patch("services.glm.call_llm", new=AsyncMock(return_value={"content": ""})):
                                 from agent.instinct import get_instinct
                                 result = await get_instinct()
         assert "semua ok" in result

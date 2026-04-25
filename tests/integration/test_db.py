@@ -8,7 +8,6 @@ from datetime import date, timedelta
 
 @pytest.mark.asyncio
 async def test_init_db_creates_tables(fresh_db):
-    """init_db should create all required tables."""
     from db.models import engine
     from sqlalchemy import inspect
     async with engine.connect() as conn:
@@ -66,10 +65,8 @@ class TestInventoryQueries:
     @pytest.mark.asyncio
     async def test_log_sell_deducts_fifo(self, fresh_db):
         from db.queries import db_update_inventory, db_log_sell, db_get_inventory
-        # Add two batches
         await db_update_inventory("tomato", 500, price_per_kg=2.50, supplier_name="Pak Ali")
         await db_update_inventory("tomato", 300, price_per_kg=2.80, supplier_name="Ah Seng")
-        # Sell 200kg
         result = await db_log_sell("tomato", 200, price_per_kg=3.20, buyer_name="Restoran Maju")
         assert result["sold_kg"] == 200
         assert result["remaining_stock_kg"] == 600
@@ -147,12 +144,19 @@ class TestSupplierPriceQueries:
     @pytest.mark.asyncio
     async def test_compare_prices(self, fresh_db):
         from db.queries import db_update_inventory, db_compare_prices
+        from db.models import AsyncSessionLocal, FamaBenchmark
+        from sqlalchemy import select
+
+        # Seed FAMA benchmark for compare_prices to work
+        async with AsyncSessionLocal() as session:
+            session.add(FamaBenchmark(commodity="tomato", price_per_kg=2.75, week_date=date.today()))
+            await session.commit()
+
         await db_update_inventory("tomato", 500, price_per_kg=2.60, supplier_name="Pak Ali")
         await db_update_inventory("tomato", 300, price_per_kg=2.85, supplier_name="Ah Seng")
         result = await db_compare_prices("tomato")
         assert "suppliers" in result
         assert "fama_benchmark" in result
-        # Should be sorted by price
         if len(result["suppliers"]) >= 2:
             prices = [s["price_per_kg"] for s in result["suppliers"]]
             assert prices == sorted(prices)
@@ -245,7 +249,7 @@ class TestPriceTrend:
     async def test_price_trend_with_data(self, seeded_db):
         from db.queries import db_get_price_trend
         result = await db_get_price_trend("tomato", days=14)
-        if result:  # may or may not have data depending on seed dates
+        if result:
             assert "trend" in result
             assert result["commodity"] == "tomato"
 
@@ -268,7 +272,7 @@ class TestSeedData:
     @pytest.mark.asyncio
     async def test_seed_idempotent(self, seeded_db):
         from db.seed import seed_demo_data
-        await seed_demo_data()  # Should skip without error
+        await seed_demo_data()
         from db.queries import db_get_inventory
         inventory = await db_get_inventory()
         assert len(inventory) > 0

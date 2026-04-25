@@ -107,7 +107,6 @@ cd stocky_ai
 python -m venv venv
 venv\Scripts\activate        # Windows
 pip install -r requirements.txt
-cp .env.example .env
 # Fill in BOT_TOKEN and ILMU_API_KEY in .env
 python main.py               # Initialises DB, seeds demo data, starts bot
 ```
@@ -125,6 +124,12 @@ DASHBOARD_URL=...            # Your deployed Lovable dashboard URL
 ```
 
 ---
+## Run Test
+
+```
+$ python -m pytest
+```
+
 
 ## Demo Commands
 
