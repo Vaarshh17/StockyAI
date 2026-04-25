@@ -10,6 +10,8 @@
 **SAD (System)**: ```docs/Stocky_AI_SAD.pdf```<br>
 **TAD (Testing)**: ```docs/Stocky_AI_TAD.pdf```<br>
 
+Above documents are also uploaded in drive for easier access.<br>
+**Documents**: https://drive.google.com/drive/u/2/folders/1r8BMnYSKIT8ALzwH09g2lqTujCmpzSvY
 
 ---
 
