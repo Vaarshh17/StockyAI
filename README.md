@@ -4,7 +4,7 @@
 > Lives entirely on Telegram. Speaks Malay, Mandarin, and English. Watches your business while you sleep.
 
 ### **UM Hackathon 2026 — Domain: AI for Economic Empowerment & Decision Intelligence**<br>
-**Pitch Video**: \<link><br>
+**Pitch Video**: https://drive.google.com/file/d/1YgCEzYUSTP9JbD0QVYEmU-bPM4GE3nHx/view?usp=sharing><br>
 **Pitch Deck**:  ```docs/Stocky_AI_Pitch Deck.pdf```<br><br>
 **PRD (Product)**: ```docs/Stocky_AI_PRD.pdf```<br>
 **SAD (System)**: ```docs/Stocky_AI_SAD.pdf```<br>
