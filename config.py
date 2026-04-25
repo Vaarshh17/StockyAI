@@ -40,6 +40,10 @@ DEFAULT_CITY:     str  = os.getenv("DEFAULT_CITY", "Kuala Lumpur")
 DEFAULT_LANGUAGE: str  = os.getenv("DEFAULT_LANGUAGE", "malay")
 DEMO_MODE:        bool = os.getenv("DEMO_MODE", "False").lower() == "true"
 
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+# URL of the deployed React dashboard (Lovable / Vercel / Netlify)
+DASHBOARD_URL: str = os.getenv("DASHBOARD_URL", "")
+
 
 def validate():
     errors = []

@@ -12,7 +12,8 @@ from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
 
-INSTINCT_SYSTEM_PROMPT = """
+INSTINCT_SYSTEM_PROMPTS = {
+    "Malay": """
 Kamu adalah Stocky AI, pembantu perniagaan untuk peniaga borong Malaysia.
 Tugas kamu sekarang: analisa data perniagaan 14 hari ini dan CARI SATU corak yang tidak jelas.
 
@@ -28,9 +29,48 @@ PERATURAN:
 2. Mulakan dengan: "Stocky nampak sesuatu:"
 3. Sebut nama komoditi, pembekal, atau pembeli yang spesifik
 4. 2-3 ayat sahaja, bahasa Melayu yang natural
-5. Jika tiada corak signifikan: tulis "Stocky nampak semua ok minggu ni. Teruskan\!"
+5. Jika tiada corak signifikan: tulis "Stocky nampak semua ok minggu ni. Teruskan!"
 6. Jangan teka — hanya bercakap berdasarkan data yang ada
-"""
+""",
+    "English": """
+You are Stocky AI, a business intelligence partner for Malaysian produce wholesalers.
+Your task: analyse the last 14 days of business data and surface ONE non-obvious pattern.
+
+Look across these signals:
+- Sales velocity trends (anything selling unusually fast or slow?)
+- Supplier price cycles (any supplier raising prices in a pattern?)
+- Credit accumulation (any buyer whose debt keeps growing?)
+- Inventory timing (consistently over- or under-stocked on any commodity?)
+- Cross-commodity signals (when X sells fast, does Y always slow down?)
+
+RULES:
+1. Pick ONE most meaningful finding only
+2. Start with: "Stocky sees something:"
+3. Name the specific commodity, supplier, or buyer
+4. 2-3 sentences max, plain conversational English
+5. If no significant pattern: write "Stocky sees everything looking normal this week. Keep it up!"
+6. Do not guess — only speak from the data provided
+""",
+    "中文": """
+你是Stocky AI，马来西亚批发商的商业智能助手。
+你的任务：分析过去14天的业务数据，找出一个不明显的规律。
+
+关注以下信号：
+- 销售速度趋势（有没有哪种商品异常快或慢？）
+- 供应商价格周期（有没有供应商按规律涨价？）
+- 信用积累（有没有买家欠款越来越多？）
+- 库存时机（某种商品是否总是过多或不足？）
+- 跨商品信号（X卖得快时，Y是否总会下降？）
+
+规则：
+1. 只选一个最有意义的发现
+2. 以"Stocky发现了什么："开头
+3. 具体说明是哪种商品、供应商或买家
+4. 最多2-3句话，自然口语化中文
+5. 如果没有明显规律：写"Stocky看本周一切正常，继续保持！"
+6. 不要猜测——只根据提供的数据发言
+""",
+}
 
 INSTINCT_USER_TEMPLATE = """
 Ini data perniagaan terkini:
@@ -54,16 +94,19 @@ Apa yang Stocky nampak?
 """
 
 
-async def get_instinct() -> str:
+async def get_instinct(language: str = "Malay") -> str:
     """
-    Run Stocky's Instinct analysis.
+    Run Stocky's Instinct analysis via ILMU API (Z.ai / ilmu-glm-5.1).
 
     Called by:
-    - morning_brief_job() in scheduler/jobs.py
+    - run_proactive_brief("morning") in agent/core.py
     - run_proactive_brief("digest") in agent/core.py
 
+    Args:
+        language: User's preferred language ("Malay", "English", "中文")
+
     Returns:
-        A string starting with "Stocky nampak sesuatu:" or "Stocky nampak semua ok."
+        A string starting with "Stocky nampak sesuatu:" / "Stocky sees something:" etc.
     """
     try:
         from db.queries import (
@@ -71,7 +114,7 @@ async def get_instinct() -> str:
             db_get_weekly_digest, db_get_credit,
             db_get_price_trend,
         )
-        from services.glm import call_glm
+        from services.glm import call_llm  # ← correct function name
 
         # Gather all signal streams
         inventory = await db_get_inventory()
@@ -101,20 +144,29 @@ async def get_instinct() -> str:
             price_trends=_fmt(price_trends),
         )
 
+        system_prompt = INSTINCT_SYSTEM_PROMPTS.get(language, INSTINCT_SYSTEM_PROMPTS["Malay"])
         messages = [
-            {"role": "system", "content": INSTINCT_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user",   "content": context},
         ]
 
-        response = await call_glm(messages, tools=None)
+        response = await call_llm(messages, tools=None)   # ← call_llm, not call_glm
         result = response.get("content", "").strip()
 
         if not result:
-            return "Stocky nampak semua ok minggu ni. Teruskan\!"
+            fallbacks = {
+                "English": "Stocky sees everything looking normal this week. Keep it up!",
+                "中文":    "Stocky看本周一切正常，继续保持！",
+            }
+            return fallbacks.get(language, "Stocky nampak semua ok minggu ni. Teruskan!")
 
         # Ensure it starts with the right prefix
         if not result.startswith("Stocky"):
-            result = "Stocky nampak sesuatu: " + result
+            prefix = {
+                "English": "Stocky sees something: ",
+                "中文":    "Stocky发现了什么：",
+            }.get(language, "Stocky nampak sesuatu: ")
+            result = prefix + result
 
         return result
 

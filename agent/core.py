@@ -1,16 +1,18 @@
 """
 agent/core.py — The Agent Loop. Heart of Stocky AI.
 
-Flow: user input → ILMU nemo-super (with tools) → tool calls → model → response
+Flow: user input → ILMU ilmu-glm-5.1 (Z.ai / YTL AI Labs) → tool calls → response
 
-Two-model strategy:
-  nemo-super     → user-facing agent loop, morning brief, instinct analysis
-  ilmu-nemo-nano → lightweight proactive scheduler jobs
+Model: ilmu-glm-5.1 via ILMU API (api.ilmu.ai/v1)
+  MODEL_SMART → user-facing agent loop, morning brief, instinct (default)
+  MODEL_FAST  → lightweight proactive scheduler jobs (currently same model)
 
 Owner: Person 1
 """
+import hashlib
 import json
 import logging
+import time
 import uuid
 
 from services.glm import call_llm
@@ -22,6 +24,11 @@ from agent.persona import get_persona, load_persona
 logger = logging.getLogger(__name__)
 MAX_TOOL_ITERATIONS = 6
 
+# ── Forwarded message dedup ───────────────────────────────────────────────────
+# Stores (content_hash, timestamp) per user. Ignores re-forwards within 60s.
+_forwarded_seen: dict[int, tuple[str, float]] = {}
+FORWARD_DEDUP_WINDOW_SEC = 60
+
 
 async def run_agent(
     user_id: int,
@@ -29,23 +36,46 @@ async def run_agent(
     input_forwarded: dict = None,
     input_type: str = "text",
     use_fast_model: bool = False,
+    save_history: bool = True,  # False for scheduler/proactive briefs
 ) -> dict:
     """
     Run the agent for one user message.
 
+    Args:
+        save_history: Set False for proactive/scheduler calls so the scheduler
+                      prompt doesn't pollute the user's conversation history.
+
     Returns:
         { "text": str, "needs_approval": bool, "draft_id": str | None }
     """
-    history = get_history(user_id)
+    history = get_history(user_id) if save_history else []
 
     # ── 0. Load persona (use cached or fetch from DB) ─────────────────────────
     persona = get_persona(user_id) or await load_persona(user_id)
 
     # ── 1. Build user message ─────────────────────────────────────────────────
     if input_type == "forwarded" and input_forwarded:
+        raw_text = input_forwarded.get("text", "")
+
+        # ── Dedup: ignore if same content forwarded within the window ─────────
+        content_hash = hashlib.md5(raw_text.encode()).hexdigest()
+        last_hash, last_ts = _forwarded_seen.get(user_id, ("", 0.0))
+        now = time.time()
+        if content_hash == last_hash and (now - last_ts) < FORWARD_DEDUP_WINDOW_SEC:
+            logger.info(f"[agent] duplicate forwarded message from user={user_id} — ignored (within {FORWARD_DEDUP_WINDOW_SEC}s window)")
+            return {"text": "", "needs_approval": False, "draft_id": None, "skip": True}
+        _forwarded_seen[user_id] = (content_hash, now)
+
+        # ── Force tool check before any response ─────────────────────────────
+        # Prepend a mandatory instruction so the model ALWAYS queries live data
+        # before commenting on the forwarded content (price quotes, etc.)
         text = (
             f"[Mesej dimajukan dari {input_forwarded['original_sender']} "
-            f"pada {input_forwarded['original_date']}]\n{input_forwarded.get('text', '')}"
+            f"pada {input_forwarded['original_date']}]\n{raw_text}\n\n"
+            "INSTRUCTION: Before replying, you MUST call the relevant tools to "
+            "check live data (inventory, supplier prices, FAMA benchmark, weather). "
+            "Do NOT respond based on the forwarded text alone. "
+            "Cross-reference with current stock and prices first, then give your analysis."
         )
         user_msg = {"role": "user", "content": text}
     else:
@@ -87,7 +117,11 @@ async def run_agent(
     else:
         logger.warning(f"[agent] ⚠️  Max tool iterations ({MAX_TOOL_ITERATIONS}) hit for user {user_id}")
 
-    final_text = response.get("content") or "Sorry, something went wrong. Please try again."
+    # If max iterations hit, content may be None (last msg had tool_calls, no text)
+    final_text = response.get("content") or ""
+    if not final_text:
+        final_text = "Maaf, saya menghadapi masalah teknikal. Sila cuba lagi."
+        logger.warning(f"[agent] empty final content for user={user_id} — returning fallback")
     logger.info(f"[agent] final reply ({len(final_text)} chars): {final_text[:80]}...")
 
     # ── 4. Check for draft messages needing approval ──────────────────────────
@@ -95,10 +129,11 @@ async def run_agent(
         logger.info(f"[agent] draft message detected → sending for approval")
         return _handle_draft(user_id, final_text)
 
-    # ── 5. Save conversation turn ─────────────────────────────────────────────
-    assistant_msg = {"role": "assistant", "content": final_text}
-    save_turn(user_id, user_msg, assistant_msg)
-    logger.info(f"[agent] turn saved to memory")
+    # ── 5. Save conversation turn (only for real user interactions) ───────────
+    if save_history:
+        assistant_msg = {"role": "assistant", "content": final_text}
+        save_turn(user_id, user_msg, assistant_msg)
+        logger.info(f"[agent] turn saved to memory")
 
     return {"text": final_text, "needs_approval": False, "draft_id": None}
 
@@ -106,14 +141,28 @@ async def run_agent(
 async def run_proactive_brief(user_id: int, brief_type: str = "morning") -> str:
     """
     Entry point for all scheduler jobs.
-    Simple jobs use ilmu-nemo-nano. Morning brief and digest use nemo-super.
+    Uses ilmu-glm-5.1 (Z.ai / YTL AI Labs) via ILMU API.
+    Does NOT save to conversation history — proactive prompts must never
+    pollute the user's real conversation context.
     """
+    # ── Load persona — check cache first, then DB ─────────────────────────────
+    persona = get_persona(user_id) or await load_persona(user_id)
+    lang = (persona or {}).get("language", "English")
+
+    # Inject festival context into morning brief and weekly digest
+    from services.festivals import get_upcoming_events, format_events_for_brief
+    upcoming_events = get_upcoming_events(within_days=21)
+    festival_block = format_events_for_brief(upcoming_events, language=lang)
+
+    morning_extra = f"\n\n{festival_block}" if festival_block else ""
+
     prompts = {
         "morning": (
             "Jana briefing pagi untuk peniaga. "
             "Semak inventori, harga pembekal, cuaca, dan kredit tertunggak. "
             "Buat senarai belian untuk hari ini dengan sebab yang jelas. "
             "Format: cadang beli (🟢/🟡/🔴), hutang tertunggak, nota cuaca."
+            + morning_extra
         ),
         "spoilage": (
             "Semak semua stok inventori dan ramalan cuaca. "
@@ -134,6 +183,7 @@ async def run_proactive_brief(user_id: int, brief_type: str = "morning") -> str:
             "Jana digest perniagaan mingguan. "
             "Sertakan: pendapatan minggu ini vs minggu lalu, komoditi terbaik/terburuk, "
             "kredit tertunggak, dan SATU penemuan penting yang mungkin peniaga tidak perasan."
+            + morning_extra
         ),
     }
 
@@ -147,17 +197,75 @@ async def run_proactive_brief(user_id: int, brief_type: str = "morning") -> str:
         input_text=prompt,
         input_type="text",
         use_fast_model=use_fast,
+        save_history=False,   # ← do NOT pollute the user's conversation history
     )
     text = result["text"]
 
-    # Append Stocky's Instinct for morning brief and weekly digest (nemo-super only)
+    # Append Stocky's Instinct for morning brief and weekly digest
     if brief_type in ("morning", "digest"):
         from agent.instinct import get_instinct
-        instinct = await get_instinct()
+        instinct = await get_instinct(language=lang)
         if instinct:
             text += f"\n\n🔮 {instinct}"
 
     return text
+
+
+async def extract_proposed_actions(brief_text: str, user_id: int) -> list[dict]:
+    """
+    After the morning brief is generated, run a second lightweight Z.ai call
+    to extract structured buy recommendations as JSON.
+
+    Stores them in pending_actions and returns the list.
+    Returns [] if none found or extraction fails.
+    """
+    import json
+    import re
+    from services.glm import call_llm
+    from agent.memory import save_pending_actions
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "Extract buy recommendations from this morning brief. "
+                "Return ONLY a valid JSON array — no explanation, no markdown, no other text. "
+                'Format: [{"commodity": "tomato", "quantity_kg": 3000, '
+                '"supplier_name": "Pak Ali", "price_per_kg": 2.60, "reason": "brief reason"}] '
+                "If there are no specific buy recommendations with a named supplier and quantity, return []"
+            ),
+        },
+        {"role": "user", "content": brief_text},
+    ]
+
+    try:
+        response = await call_llm(messages, tools=None, use_fast_model=True)
+        content = (response.get("content") or "").strip()
+
+        # Pull out the JSON array even if there's surrounding noise
+        match = re.search(r"\[.*\]", content, re.DOTALL)
+        if not match:
+            return []
+
+        actions = json.loads(match.group())
+        if not isinstance(actions, list) or not actions:
+            return []
+
+        # Validate each action has the minimum required fields
+        valid = []
+        for a in actions:
+            if a.get("commodity") and a.get("quantity_kg") and a.get("supplier_name"):
+                valid.append(a)
+
+        if valid:
+            save_pending_actions(user_id, valid)
+            logger.info(f"[agent] extracted {len(valid)} proposed actions for user={user_id}")
+
+        return valid
+
+    except Exception as e:
+        logger.error(f"[agent] action extraction failed: {e}")
+        return []
 
 
 def _handle_draft(user_id: int, text: str) -> dict:

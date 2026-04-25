@@ -4,8 +4,12 @@ services/glm.py — ILMU API client (Z.ai / YTL AI Labs).
 Uses the OpenAI-compatible endpoint at api.ilmu.ai/v1.
 Model: ilmu-glm-5.1 (both MODEL_SMART and MODEL_FAST on Claw Free plan).
 
+NOTE: Always import this module and call call_llm() — never call_glm() which
+does not exist. All agent code should import: from services.glm import call_llm
+
 Owner: Person 1
 """
+import asyncio
 import os
 import logging
 from openai import AsyncOpenAI
@@ -56,14 +60,29 @@ async def call_llm(
         "model": model,
         "messages": messages,
         "temperature": 0.3,
-        "max_tokens": 2048,
+        "max_tokens": 3000,   # 2048 was too tight for full morning briefs
     }
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "auto"
 
     logger.debug(f"Calling ILMU [{model}] with {len(messages)} messages")
-    response = await client.chat.completions.create(**kwargs)
+
+    # Retry once on transient errors (timeout, 500, rate limit)
+    last_exc = None
+    for attempt in range(2):
+        try:
+            response = await client.chat.completions.create(**kwargs)
+            break
+        except Exception as e:
+            last_exc = e
+            if attempt == 0:
+                logger.warning(f"ILMU call failed (attempt 1), retrying in 2s: {e}")
+                await asyncio.sleep(2)
+            else:
+                logger.error(f"ILMU call failed after 2 attempts: {e}")
+                raise last_exc
+
     msg = response.choices[0].message
 
     # Normalise tool_calls to plain dicts (same shape our dispatcher expects)

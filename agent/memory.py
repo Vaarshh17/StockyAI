@@ -41,3 +41,24 @@ def get_draft(user_id: int, draft_id: str) -> dict | None:
 
 # Draft store: {user_id: {draft_id: draft_dict}}
 _drafts: dict[int, dict[str, dict]] = defaultdict(dict)
+
+
+# ── Pending action store ──────────────────────────────────────────────────────
+# Holds proposed buy orders awaiting user approval (from morning brief / festival alerts).
+# {user_id: [{"commodity": str, "quantity_kg": float, "supplier_name": str, ...}]}
+_pending_actions: dict[int, list[dict]] = {}
+
+
+def save_pending_actions(user_id: int, actions: list[dict]):
+    """Store proposed buy actions for a user, awaiting approval."""
+    _pending_actions[user_id] = actions
+
+
+def get_pending_actions(user_id: int) -> list[dict]:
+    """Return pending actions for a user (empty list if none)."""
+    return _pending_actions.get(user_id, [])
+
+
+def clear_pending_actions(user_id: int):
+    """Clear pending actions after approval or skip."""
+    _pending_actions.pop(user_id, None)
