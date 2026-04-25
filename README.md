@@ -127,7 +127,7 @@ DASHBOARD_URL=...            # Your deployed Lovable dashboard URL
 ## Run Test
 
 ```
-$ python -m pytest
+$ python -m pytest 
 ```
 
 
