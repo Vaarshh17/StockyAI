@@ -94,6 +94,7 @@ stocky_ai/
 ├── db/             # 🗄️  Database models + queries + seed data
 ├── scheduler/      # ⏰ Proactive jobs (morning brief, spoilage, velocity, credit, digest)
 └── services/       # 🔌 ILMU API client, weather, voice transcription
+└── docs/           # 📃 Product, System and Testing documentations for our solution, Stocky AI
 ```
 
 ---
