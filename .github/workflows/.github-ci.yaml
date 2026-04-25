@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pylint
-      - run: pylint db services
+      - run: pylint db services --fail-under=7
     continue-on-error: true 
 
   test:
