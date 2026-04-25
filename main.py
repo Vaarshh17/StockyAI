@@ -8,7 +8,7 @@ import logging
 from telegram.ext import ApplicationBuilder, MessageHandler, CallbackQueryHandler, filters, CommandHandler
 
 from config import BOT_TOKEN, validate
-from bot.handlers import handle_message, handle_callback, handle_start, handle_command_trigger
+from bot.handlers import handle_message, handle_callback, handle_start, handle_command_trigger, handle_photo
 from db.models import init_db
 from db.seed import seed_demo_data
 from scheduler.jobs import start_scheduler
@@ -48,10 +48,11 @@ def main():
     app.add_handler(CommandHandler("start", handle_start))
     app.add_handler(CommandHandler("trigger_brief", handle_command_trigger))  # demo shortcut
 
-    # Messages (photo removed — ILMU models don't support vision)
+    # Messages
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.VOICE, handle_message))
     app.add_handler(MessageHandler(filters.FORWARDED, handle_message))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))  # OCR → auto inventory
 
     # Inline keyboard callbacks (approve/edit)
     app.add_handler(CallbackQueryHandler(handle_callback))

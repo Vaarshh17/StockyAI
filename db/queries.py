@@ -244,6 +244,64 @@ async def db_log_credit(buyer_name: str, amount_rm: float, commodity: str = None
     return {"status": "logged", "buyer_name": buyer_name, "amount_rm": amount_rm, "due_date": str(due), "total_outstanding": total}
 
 
+async def db_mark_credit_paid(buyer_name: str, amount_rm: float = None) -> dict:
+    """
+    Mark a buyer's receivable(s) as paid.
+    If amount_rm is given, marks the closest matching amount. Otherwise marks all unpaid for that buyer.
+    """
+    async with AsyncSessionLocal() as session:
+        q = select(Receivable).where(
+            and_(Receivable.buyer_name == buyer_name, Receivable.paid == False)
+        ).order_by(Receivable.due_date)
+        result = await session.execute(q)
+        rows = result.scalars().all()
+
+        if not rows:
+            return {"status": "not_found", "buyer_name": buyer_name, "message": "No outstanding credit found for this buyer."}
+
+        marked = []
+        if amount_rm:
+            # Find the row whose amount is closest to what was specified
+            best = min(rows, key=lambda r: abs(r.amount_rm - amount_rm))
+            best.paid = True
+            best.paid_date = date.today()
+            marked.append({"buyer_name": buyer_name, "amount_rm": best.amount_rm})
+        else:
+            # Mark all unpaid for this buyer
+            for r in rows:
+                r.paid = True
+                r.paid_date = date.today()
+                marked.append({"buyer_name": buyer_name, "amount_rm": r.amount_rm})
+
+        await session.commit()
+
+    total_cleared = sum(m["amount_rm"] for m in marked)
+    return {
+        "status": "paid",
+        "buyer_name": buyer_name,
+        "records_cleared": len(marked),
+        "total_cleared_rm": round(total_cleared, 2),
+    }
+
+
+# ─── SUPPLIER LOOKUP ─────────────────────────────────────────────────────────
+
+async def db_get_supplier_by_name(name: str) -> dict | None:
+    """Get supplier details (phone, language) by name. Used for WhatsApp link generation."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(Supplier).where(Supplier.name == name)
+        )
+        row = result.scalar_one_or_none()
+    if not row:
+        return None
+    return {
+        "name":     row.name,
+        "phone":    row.phone,
+        "language": row.language,
+    }
+
+
 # ─── FAMA BENCHMARKS ─────────────────────────────────────────────────────────
 
 async def get_fama_price(commodity: str, week_date: date = None) -> dict | None:

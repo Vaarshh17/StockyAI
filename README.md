@@ -43,24 +43,29 @@ Tracks who owes money, how much, and when it's due. Flags overdue accounts. Draf
 ### 5. 🌅 Morning Brief (3:30 AM, before market opens)
 Every morning, Stocky sends an unprompted brief: what's low on stock, what's expiring today, who's overdue on payment, today's weather and how it affects demand, and one proactive buy recommendation. The wholesaler wakes up already knowing what to do.
 
+Festival-aware: if Hari Raya, CNY, Deepavali, or a school holiday is within 21 days, the brief flags the demand impact and tells the wholesaler to act now.
+
 ### 6. 🔮 Stocky's Instinct
-Once a week, appended to the Monday digest, Stocky analyses 14 days of inventory, sales velocity, credit, supplier prices, and FAMA trends together and surfaces one cross-signal pattern. Example: *"Bayam sell velocity dropped 40% in the same week Pak Ali's price went up — buyers are substituting. Consider switching to kangkung next week."* Only fires when the signal crosses a significance threshold — no noise.
+Appended to both the morning brief and the Monday weekly digest, Stocky analyses 14 days of inventory, sales velocity, credit, supplier prices, and FAMA trends together and surfaces one cross-signal pattern. Example: *"Bayam sell velocity dropped 40% in the same week Pak Ali's price went up — buyers are substituting. Consider switching to kangkung next week."* Only fires when the signal crosses a significance threshold — no noise.
 
 ### 7. 🎙️ Voice Note Input
 Wholesaler sends a voice note → Whisper transcribes it locally → Stocky processes it exactly like a text message. A 55-year-old trader who doesn't want to type can run their entire business through voice.
 
 ### 8. 🌐 Multilingual (Malay, Mandarin, English, code-switching)
-Stocky understands and responds in whatever language the wholesaler writes or speaks in. Malaysian market traders code-switch mid-sentence — Stocky handles this natively.
+Stocky detects language per message and replies in the same language. After onboarding, the user's preferred language is locked into every response — no more language drift mid-conversation.
 
 ### 9. ✉️ Draft Message Generation
 When action involves another person (supplier, buyer), Stocky drafts the message in the correct language for that contact and presents it for approval. Wholesaler taps Approve → copies to WhatsApp. One decision, not five steps.
+
+### 10. 📋 Forwarded Message Intelligence
+Wholesaler forwards a supplier price quote from WhatsApp → Stocky automatically checks current inventory, FAMA benchmark, and stock levels before responding. Never replies based on the forwarded text alone. Duplicate forwards within 60 seconds are silently ignored.
 
 ---
 
 ## Powered by ILMU (Z.ai / YTL AI Labs)
 
 `ilmu-glm-5.1` is the reasoning core. Without it, this is just a database.  
-With it, it synthesizes weather + velocity + shelf life + supplier history + credit into a decision — and explains why.
+With it, it synthesizes weather + velocity + shelf life + supplier history + credit + festival calendar into a decision — and explains why.
 
 ---
 
@@ -74,8 +79,9 @@ With it, it synthesizes weather + velocity + shelf life + supplier history + cre
 | Database | Supabase (Postgres via asyncpg) + SQLite fallback |
 | Scheduler | APScheduler |
 | Voice | faster-whisper (local, tiny model) |
-| Weather | Open-Meteo API (free) |
-| Prices | FAMA benchmark (seeded) |
+| Weather | Open-Meteo API (free, no key) |
+| Prices | FAMA benchmark (seeded from published weekly data) |
+| Dashboard | React + Vite + Tailwind + shadcn/ui (Lovable) |
 
 ---
 
@@ -83,11 +89,12 @@ With it, it synthesizes weather + velocity + shelf life + supplier history + cre
 
 ```
 stocky_ai/
-├── agent/          # 🧠 Agent loop + tools + prompts + memory + instinct
-├── bot/            # 📱 Telegram handlers + keyboards + formatters
-├── db/             # 🗄️  Database models + queries + seed data
+├── agent/          # 🧠 Agent loop, tools, prompts, memory, instinct, persona/onboarding
+├── bot/            # 📱 Telegram handlers, keyboards, formatters
+├── db/             # 🗄️  Database models, queries, seed data
 ├── scheduler/      # ⏰ Proactive jobs (morning brief, spoilage, velocity, credit, digest)
-└── services/       # 🔌 ILMU API client, weather, voice transcription
+├── services/       # 🔌 ILMU API client, weather, voice, FAMA, festival calendar
+└── dashboard/      # 📊 React dashboard (separate deploy on Lovable)
 ```
 
 ---
@@ -113,6 +120,7 @@ ILMU_API_URL=https://api.ilmu.ai/v1
 MODEL_SMART=ilmu-glm-5.1
 MODEL_FAST=ilmu-glm-5.1
 SUPABASE_DB_URL=...          # Optional — falls back to local SQLite
+DASHBOARD_URL=...            # Your deployed Lovable dashboard URL
 ```
 
 ---
@@ -126,10 +134,10 @@ $ python -m pytest
 ## Demo Commands
 
 ```
-/start                        — Initialise bot, clear history
+/start                        — Onboard (new user) or welcome back (returning user)
 /trigger_brief morning        — Fire the 3:30 AM morning brief now
 /trigger_brief spoilage       — Run spoilage risk check
 /trigger_brief velocity       — Run velocity anomaly check
 /trigger_brief credit         — Run overdue credit check
-/trigger_brief digest         — Run weekly digest + Instinct
+/trigger_brief digest         — Run weekly digest + Instinct + dashboard link
 ```

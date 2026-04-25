@@ -29,5 +29,12 @@ pytest>=8.0.0
 pytest-asyncio>=0.23.0
 pytest-cov
 
+# ── Image OCR (delivery photo → inventory auto-update) ───────────────────────
+easyocr>=1.7.0               # OCR engine, downloads models on first run (~100MB)
+pillow>=10.0.0               # Image processing
+
+# ── HTTP ──────────────────────────────────────────────────────────────────────
+httpx>=0.27.0                # Async HTTP (used by Open-Meteo weather client)
+
 # ── Utilities ─────────────────────────────────────────────────────────────────
 python-dateutil>=2.9.0
