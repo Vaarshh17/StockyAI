@@ -4,14 +4,13 @@
 > Lives entirely on Telegram. Speaks Malay, Mandarin, and English. Watches your business while you sleep.
 
 ### **UM Hackathon 2026 — Domain: AI for Economic Empowerment & Decision Intelligence**<br>
-**Pitch Video**: https://drive.google.com/file/d/1YgCEzYUSTP9JbD0QVYEmU-bPM4GE3nHx/view?usp=sharing<br>
-**Pitch Deck**:  ```docs/Stocky_AI_Pitch Deck.pdf```<br><br>
-**PRD (Product)**: ```docs/Stocky_AI_PRD.pdf```<br>
-**SAD (System)**: ```docs/Stocky_AI_SAD.pdf```<br>
-**TAD (Testing)**: ```docs/Stocky_AI_TAD.pdf```<br>
+**Pitch Deck**:  ```docs/Stocky_AI_Pitch_Deck.pdf```<br><br>
+**Deployment Plan**: ```docs/Stocky_AI_Deployment_Plan.pdf```<br>
+**Business Proposal**: ```docs/Stocky_AI_Business_Proposal.pdf```<br>
+**Refined Quality Assurance Testing Document**: ```docs/Stocky_AI_Refined_Quality_Assurance_Testing_Document.pdf```<br>
 
 Above documents are also uploaded in drive for easier access.<br>
-**Documents**: https://drive.google.com/drive/u/2/folders/1r8BMnYSKIT8ALzwH09g2lqTujCmpzSvY
+**Documents**: https://drive.google.com/drive/u/0/folders/1r8BMnYSKIT8ALzwH09g2lqTujCmpzSvY
 
 ---
 
