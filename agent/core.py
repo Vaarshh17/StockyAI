@@ -12,6 +12,7 @@ Owner: Person 1
 import json
 import logging
 import uuid
+import time
 
 from services.glm import call_llm
 from agent.tools import TOOLS, execute_tool
@@ -84,6 +85,7 @@ async def run_agent(
                 "tool_call_id": tc["id"],
                 "content": json.dumps(result, ensure_ascii=False, default=str),
             })
+            # time.sleep(4)
     else:
         logger.warning(f"[agent] ⚠️  Max tool iterations ({MAX_TOOL_ITERATIONS}) hit for user {user_id}")
 
