@@ -29,5 +29,8 @@ pytest>=8.0.0
 pytest-asyncio>=0.23.0
 pytest-cov
 
+# ── Web search (real DDG search — replaces Instant Answer API) ────────────────
+ddgs>=9.0.0
+
 # ── Utilities ─────────────────────────────────────────────────────────────────
 python-dateutil>=2.9.0

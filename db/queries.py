@@ -6,7 +6,7 @@ Owner: Person 2
 import json
 from datetime import date, datetime, timedelta
 from sqlalchemy import select, func, and_
-from db.models import AsyncSessionLocal, Inventory, Supplier, SupplierPrice, Trade, Receivable, FamaBenchmark, UserProfile
+from db.models import AsyncSessionLocal, Inventory, Supplier, SupplierPrice, Trade, Receivable, FamaBenchmark, UserProfile, LoanOffer
 
 
 # ─── INVENTORY ────────────────────────────────────────────────────────────────
@@ -244,6 +244,67 @@ async def db_log_credit(buyer_name: str, amount_rm: float, commodity: str = None
     return {"status": "logged", "buyer_name": buyer_name, "amount_rm": amount_rm, "due_date": str(due), "total_outstanding": total}
 
 
+# ─── PRICE HISTORY (for supplier quote analysis) ─────────────────────────────
+
+async def db_get_price_history(commodity: str, days: int = 60) -> dict:
+    """
+    Returns historical buy and sell price stats for a commodity.
+    Used by analyze_supplier_quote to benchmark an incoming price quote.
+    """
+    since = date.today() - timedelta(days=days)
+    async with AsyncSessionLocal() as session:
+        # Buy price stats
+        buy_result = await session.execute(
+            select(
+                func.min(Trade.price_per_kg).label("min_price"),
+                func.avg(Trade.price_per_kg).label("avg_price"),
+                func.count(Trade.id).label("trade_count"),
+            )
+            .where(and_(
+                Trade.commodity == commodity.lower(),
+                Trade.trade_type == "buy",
+                Trade.trade_date >= since,
+            ))
+        )
+        buy_row = buy_result.one()
+
+        # Most recent buy
+        last_result = await session.execute(
+            select(Trade.price_per_kg, Trade.trade_date, Trade.counterparty)
+            .where(and_(
+                Trade.commodity == commodity.lower(),
+                Trade.trade_type == "buy",
+                Trade.trade_date >= since,
+            ))
+            .order_by(Trade.trade_date.desc())
+            .limit(1)
+        )
+        last = last_result.one_or_none()
+
+        # Avg sell price (what they actually sell at)
+        sell_result = await session.execute(
+            select(func.avg(Trade.price_per_kg))
+            .where(and_(
+                Trade.commodity == commodity.lower(),
+                Trade.trade_type == "sell",
+                Trade.trade_date >= since,
+            ))
+        )
+        avg_sell = sell_result.scalar()
+
+    return {
+        "commodity":       commodity,
+        "days":            days,
+        "min_buy_price":   round(buy_row.min_price, 2) if buy_row.min_price else None,
+        "avg_buy_price":   round(buy_row.avg_price, 2) if buy_row.avg_price else None,
+        "trade_count":     buy_row.trade_count or 0,
+        "last_buy_price":  round(last[0], 2) if last else None,
+        "last_buy_date":   str(last[1]) if last else None,
+        "last_supplier":   last[2] if last else None,
+        "avg_sell_price":  round(avg_sell, 2) if avg_sell else None,
+    }
+
+
 # ─── FAMA BENCHMARKS ─────────────────────────────────────────────────────────
 
 async def get_fama_price(commodity: str, week_date: date = None) -> dict | None:
@@ -341,6 +402,15 @@ async def db_get_persona(user_id: int) -> dict | None:
     }
 
 
+# ─── STARTUP HELPERS ─────────────────────────────────────────────────────────
+
+async def db_get_all_user_ids() -> list[int]:
+    """Return all user_ids from user_profiles — used on startup to restore ACTIVE_USERS."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(select(UserProfile.user_id))
+        return [row[0] for row in result.all()]
+
+
 # ─── PRICE TREND (for Stocky's Instinct) ──────────────────────────────────────
 
 async def db_get_price_trend(commodity: str, days: int = 14) -> dict | None:
@@ -381,4 +451,152 @@ async def db_get_price_trend(commodity: str, days: int = 14) -> dict | None:
         "latest_price":   prices[-1] if prices else None,
         "trend":      trend,
         "pct_change": round((avg_late - avg_early) / avg_early * 100, 1) if avg_early else 0,
+    }
+
+
+# ─── FINANCIAL PROFILE (Data Engine) ─────────────────────────────────────────
+
+def _empty_financial_data() -> dict:
+    return {
+        "total_data_days": 0,
+        "avg_weekly_revenue_rm": 0.0,
+        "weekly_revenues": [],
+        "total_savings_rm": 0.0,
+        "total_savings_30d_rm": 0.0,
+        "receivables_collection_rate_pct": 0.0,
+        "overdue_rate_pct": 0.0,
+        "avg_days_to_collect": 0.0,
+        "total_outstanding_rm": 0.0,
+    }
+
+
+async def db_calc_financial_data() -> dict:
+    """
+    Compute all financial metrics from trade and receivables history.
+    Single session — loads all required data then computes in Python.
+    Called by agent/finance.py to generate creditworthiness profile.
+    """
+    async with AsyncSessionLocal() as session:
+        # ── Sell trades (revenue) ──────────────────────────────────────
+        sell_result = await session.execute(
+            select(Trade.trade_date, Trade.quantity_kg, Trade.price_per_kg)
+            .where(Trade.trade_type == "sell")
+            .order_by(Trade.trade_date)
+        )
+        sell_trades = sell_result.all()
+
+        if not sell_trades:
+            return _empty_financial_data()
+
+        first_date = sell_trades[0][0]
+        total_data_days = max((date.today() - first_date).days, 1)
+        num_weeks = max(total_data_days / 7, 1)
+
+        # Group revenue by week bucket
+        week_revenues: dict[int, float] = {}
+        for trade_date, qty, price in sell_trades:
+            bucket = (trade_date - first_date).days // 7
+            week_revenues[bucket] = week_revenues.get(bucket, 0.0) + qty * price
+        weekly_list = list(week_revenues.values())
+        total_revenue = sum(weekly_list)
+        avg_weekly_revenue = total_revenue / num_weeks
+
+        # ── Buy trades + FAMA savings ──────────────────────────────────
+        buy_result = await session.execute(
+            select(Trade.commodity, Trade.quantity_kg, Trade.price_per_kg, Trade.trade_date)
+            .where(Trade.trade_type == "buy")
+        )
+        buy_trades = buy_result.all()
+
+        # Load all FAMA benchmarks into memory for fast lookup
+        fama_result = await session.execute(
+            select(FamaBenchmark.commodity, FamaBenchmark.price_per_kg, FamaBenchmark.week_date)
+            .order_by(FamaBenchmark.week_date)
+        )
+        fama_rows = fama_result.all()
+        fama_map: dict[str, list] = {}
+        for f_commodity, f_price, f_week in fama_rows:
+            fama_map.setdefault(f_commodity, []).append((f_week, f_price))
+
+        thirty_days_ago = date.today() - timedelta(days=30)
+        total_savings = 0.0
+        savings_30d = 0.0
+        for commodity, qty, price, trade_date in buy_trades:
+            benchmarks = fama_map.get(commodity.lower(), [])
+            fama_price = None
+            for w_date, w_price in reversed(benchmarks):
+                if w_date <= trade_date:
+                    fama_price = w_price
+                    break
+            if fama_price and price < fama_price:
+                saving = (fama_price - price) * qty
+                total_savings += saving
+                if trade_date >= thirty_days_ago:
+                    savings_30d += saving
+
+        # ── Receivables ────────────────────────────────────────────────
+        recv_result = await session.execute(select(Receivable))
+        all_receivables = recv_result.scalars().all()
+
+        total_recv = len(all_receivables)
+        paid_recv = [r for r in all_receivables if r.paid]
+        collection_rate = (len(paid_recv) / total_recv * 100) if total_recv > 0 else 100.0
+
+        today_d = date.today()
+        overdue_count = sum(
+            1 for r in all_receivables
+            if (not r.paid and r.due_date and r.due_date < today_d)
+            or (r.paid and r.paid_date and r.due_date and r.paid_date > r.due_date)
+        )
+        overdue_rate = (overdue_count / total_recv * 100) if total_recv > 0 else 0.0
+
+        collect_days = []
+        for r in paid_recv:
+            if r.paid_date and r.created_at:
+                days = (r.paid_date - r.created_at.date()).days
+                if days >= 0:
+                    collect_days.append(days)
+        avg_days_to_collect = sum(collect_days) / len(collect_days) if collect_days else 7.0
+
+        outstanding = sum(r.amount_rm for r in all_receivables if not r.paid)
+
+    return {
+        "total_data_days": total_data_days,
+        "avg_weekly_revenue_rm": round(avg_weekly_revenue, 2),
+        "weekly_revenues": weekly_list,
+        "total_savings_rm": round(total_savings, 2),
+        "total_savings_30d_rm": round(savings_30d, 2),
+        "receivables_collection_rate_pct": round(collection_rate, 1),
+        "overdue_rate_pct": round(overdue_rate, 1),
+        "avg_days_to_collect": round(avg_days_to_collect, 1),
+        "total_outstanding_rm": round(outstanding, 2),
+    }
+
+
+async def db_save_loan_offer(user_id: int, amount_rm: float, score: int) -> dict:
+    """Record a loan offer sent to a trader."""
+    async with AsyncSessionLocal() as session:
+        offer = LoanOffer(user_id=user_id, amount_rm=amount_rm, score=score)
+        session.add(offer)
+        await session.commit()
+    return {"status": "saved", "amount_rm": amount_rm, "score": score}
+
+
+async def db_get_latest_loan_offer(user_id: int) -> dict | None:
+    """Get the most recent loan offer for a user."""
+    async with AsyncSessionLocal() as session:
+        result = await session.execute(
+            select(LoanOffer)
+            .where(LoanOffer.user_id == user_id)
+            .order_by(LoanOffer.offered_at.desc())
+            .limit(1)
+        )
+        offer = result.scalar_one_or_none()
+    if not offer:
+        return None
+    return {
+        "amount_rm": offer.amount_rm,
+        "score": offer.score,
+        "status": offer.status,
+        "offered_at": offer.offered_at.isoformat(),
     }

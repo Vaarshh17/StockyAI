@@ -7,55 +7,61 @@
 ```
 [Wholesaler on Telegram]
          │
-         │  text / photo / voice / forwarded msg
+         │  text / voice note / forwarded supplier quote
          ▼
-[python-telegram-bot]
+[python-telegram-bot v20]
          │
          ▼
-[bot/handlers.py]  ──────────────────────────────────────┐
-         │                                               │
-         │ run_agent(user_id, input)                     │ send_message(user_id, text)
-         ▼                                               │
-[agent/core.py — The Agent Loop]                         │
-    1. Build messages (history + input)                  │
-    2. Call GLM with tools                               │
-    3. If tool_calls → execute tools                     │
-    4. Loop until final response                         │
-    5. Return response text                              │
-         │                                               │
-    ┌────┴─────────────────────────┐                    │
-    │         Tool Calls           │                    │
-    ▼                              ▼                    │
-[db/queries.py]          [services/]                   │
- - get_inventory()        - glm.py (GLM API)            │
- - update_inventory()     - weather.py (Open-Meteo)     │
- - log_trade()            - fama.py (price benchmarks)  │
- - compare_prices()                                     │
- - get_credit()           ◄──────────────────────────── │
- - log_credit()
- - get_weekly_digest()
-         │
-         ▼
-   [SQLite Database]
+[bot/handlers.py]  ───────────────────────────────────────┐
+         │                                                │
+         │ run_agent(user_id, input)                      │ send_message(user_id, text)
+         ▼                                                │
+[agent/core.py — The Agent Loop]                          │
+    1. Build messages (system prompt + history + input)   │
+    2. Call GLM with tools                                │
+    3. If tool_calls → execute tools                      │
+    4. Loop until final response (max 10 iterations)      │
+    5. Append instinct / savings footer / dashboard link  │
+    6. Return response text                               │
+         │                                                │
+    ┌────┴──────────────────────────────────────┐         │
+    │              Tool Calls (14 tools)        │         │
+    ▼                                           ▼         │
+[db/queries.py]                        [services/]        │
+ - get_inventory()                      - glm.py  (LLM)  │
+ - update_inventory()                   - weather.py      │
+ - log_sell() [FIFO]                    - voice.py        │
+ - compare_prices()                     - fama.py         │
+ - get_credit()                         - websearch.py    │
+ - log_credit()                           (ddgs, real     │
+ - get_velocity()                          web search)    │
+ - get_weekly_digest()                                    │
+ - db_get_price_history()  ◄──────────────────────────   │
+ - db_calc_financial_data() ◄─────────────────────────   │
 
+[agent/insight.py]   — per-commodity cross-signal (no extra GLM call)
+[agent/instinct.py]  — full 14-day cross-commodity GLM analysis
+[agent/quote.py]     — supplier quote benchmarking (vs FAMA + historical low)
+[agent/finance.py]   — creditworthiness scoring + Digital Niaga loan package
 
-[scheduler/jobs.py]  (APScheduler — runs independently)
-    - morning_brief_job()     → calls agent → sends via bot
-    - spoilage_check_job()    → calls tools → conditionally sends
-    - velocity_alert_job()    → calls tools → conditionally sends
-    - credit_reminder_job()   → calls tools → conditionally sends
-    - monday_digest_job()     → calls agent → sends via bot
+[scheduler/jobs.py]  (APScheduler — Asia/Kuala_Lumpur timezone)
+    - morning_brief_job()       → 3:30 AM daily
+    - spoilage_check_job()      → 8 AM + 2 PM (if days_remaining ≤ 2 AND qty > 20kg)
+    - velocity_alert_job()      → every 4 hours (if >30% faster OR >40% slower + expiry)
+    - credit_reminder_job()     → 9 AM daily (if due today or overdue)
+    - monday_digest_job()       → Monday 7 AM
+    - financial_profile_job()   → Sunday 10 AM (eligible + no offer in 30 days)
 ```
 
 ---
 
-## Database Schema
+## Database Schema (8 tables)
 
 ```sql
 -- What stock do we have right now?
 CREATE TABLE inventory (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    commodity       TEXT NOT NULL,        -- "tomato", "cili", "bayam"
+    commodity       TEXT NOT NULL,
     quantity_kg     REAL NOT NULL,
     entry_date      DATE NOT NULL,
     shelf_life_days INTEGER DEFAULT 7,
@@ -67,54 +73,75 @@ CREATE TABLE inventory (
 
 -- Who are our suppliers?
 CREATE TABLE suppliers (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    name            TEXT NOT NULL,        -- "Pak Ali", "Ah Seng"
-    phone           TEXT,
-    language        TEXT DEFAULT 'malay', -- 'malay', 'mandarin', 'english'
-    reliability     REAL DEFAULT 5.0      -- 1-10 score
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    phone       TEXT,
+    language    TEXT DEFAULT 'malay',
+    reliability REAL DEFAULT 5.0
 );
 
 -- What prices have suppliers quoted?
 CREATE TABLE supplier_prices (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    supplier_id     INTEGER NOT NULL,
-    commodity       TEXT NOT NULL,
-    price_per_kg    REAL NOT NULL,
-    quantity_kg     REAL,
-    quoted_date     DATE NOT NULL,
-    source          TEXT DEFAULT 'direct' -- 'direct', 'forwarded', 'photo'
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    supplier_id  INTEGER NOT NULL,
+    commodity    TEXT NOT NULL,
+    price_per_kg REAL NOT NULL,
+    quantity_kg  REAL,
+    quoted_date  DATE NOT NULL,
+    source       TEXT DEFAULT 'direct'
 );
 
 -- All buy/sell transactions
 CREATE TABLE trades (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    trade_type      TEXT NOT NULL,        -- 'buy' or 'sell'
-    commodity       TEXT NOT NULL,
-    quantity_kg     REAL NOT NULL,
-    price_per_kg    REAL NOT NULL,
-    counterparty    TEXT,
-    trade_date      DATE NOT NULL,
-    notes           TEXT
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    trade_type   TEXT NOT NULL,   -- 'buy' or 'sell'
+    commodity    TEXT NOT NULL,
+    quantity_kg  REAL NOT NULL,
+    price_per_kg REAL NOT NULL,
+    counterparty TEXT,
+    trade_date   DATE NOT NULL,
+    notes        TEXT
 );
 
 -- Credit sales — buyer takes goods, pays later
 CREATE TABLE receivables (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    buyer_name      TEXT NOT NULL,
-    commodity       TEXT,
-    amount_rm       REAL NOT NULL,
-    due_date        DATE,
-    paid            BOOLEAN DEFAULT FALSE,
-    paid_date       DATE,
-    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    buyer_name TEXT NOT NULL,
+    commodity  TEXT,
+    amount_rm  REAL NOT NULL,
+    due_date   DATE,
+    paid       BOOLEAN DEFAULT FALSE,
+    paid_date  DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- FAMA weekly benchmark prices
+-- FAMA weekly benchmark prices (8 weeks seeded)
 CREATE TABLE fama_benchmarks (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    commodity       TEXT NOT NULL,
-    price_per_kg    REAL NOT NULL,
-    week_date       DATE NOT NULL          -- Monday of that week
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    commodity    TEXT NOT NULL,
+    price_per_kg REAL NOT NULL,
+    week_date    DATE NOT NULL
+);
+
+-- Trader profiles (onboarding)
+CREATE TABLE user_profiles (
+    user_id     BIGINT PRIMARY KEY,   -- Telegram ID — BigInteger avoids int32 overflow
+    name        TEXT,
+    language    TEXT DEFAULT 'English',
+    commodities TEXT,                 -- JSON array
+    city        TEXT DEFAULT 'Kuala Lumpur',
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Loan offers generated by the financial profile engine
+CREATE TABLE loan_offers (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    BIGINT NOT NULL,
+    amount_rm  REAL NOT NULL,
+    score      INTEGER NOT NULL,
+    status     TEXT DEFAULT 'pending',  -- pending | applied | disbursed | declined
+    offered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 ```
 
@@ -127,22 +154,151 @@ async def run_agent(user_id, input):
 
     messages = [system_prompt] + get_history(user_id) + [user_message]
 
-    while True:
-        response = await call_glm(messages, tools=TOOLS)
+    for _ in range(MAX_TOOL_ITERATIONS):   # cap at 10
+        response = await call_llm(messages, tools=TOOLS)
 
         if response.tool_calls:
-            # GLM wants to call a tool
             for tool_call in response.tool_calls:
-                result = await execute_tool(tool_call.name, tool_call.args)
+                result = await execute_tool(tool_call.name, tool_call.args, user_id)
                 messages.append(tool_result(result))
             messages.append(response)
             # Loop: call GLM again with tool results
         else:
-            # GLM has a final answer
-            return response.content
+            return response.content  # final answer
 ```
 
-This is the entire agent. No framework needed. GLM decides when to stop calling tools.
+---
+
+## Tool Inventory (14 tools)
+
+| Tool | Purpose | When called |
+|------|---------|-------------|
+| `get_inventory` | Current stock levels + days_remaining | Any inventory question |
+| `update_inventory` | Log a delivery | User mentions receiving goods |
+| `log_sell` | Record a sale + FIFO stock deduction | User mentions selling |
+| `compare_supplier_prices` | Rank suppliers vs FAMA | Buy decisions |
+| `get_outstanding_credit` | Unpaid receivables | Credit/cash flow questions |
+| `log_credit` | Record a credit sale | Buyer takes goods on credit |
+| `get_weather_forecast` | 5-day weather (Open-Meteo) | Before spoilage/buy advice |
+| `get_velocity` | Avg kg/day sold over 7 days | Velocity alerts |
+| `get_weekly_digest` | 7-day revenue summary | Monday digest |
+| `get_instinct_analysis` | Full 14-day cross-commodity GLM insight | Morning brief + digest only |
+| `get_commodity_insight` | Per-commodity cross-signals (no extra GLM call) | Every commodity-specific query |
+| `analyze_supplier_quote` | Benchmark forwarded price vs FAMA + historical low → BELI/PASS | Any price quote (forwarded or typed) |
+| `search_market_news` | Real DDG web search OR festival date lookup | News/disruption/festival queries |
+| `get_financial_profile` | Creditworthiness score + Digital Niaga loan eligibility | Profile/loan/capital check |
+
+---
+
+## Supplier Quote Analysis Engine (agent/quote.py)
+
+```
+[Forwarded message / typed price quote]
+              │
+              ▼
+[analyze_supplier_quote(commodity, price, qty, supplier)]
+    - db_get_price_history()   → min/avg/last buy price (60 days)
+    - get_fama_price()         → FAMA benchmark this week
+    - db_get_velocity()        → avg sell price from trades
+              │
+    Benchmarks:
+    - vs FAMA benchmark          (pct above/below)
+    - vs historical low          (pct above/below)
+    - vs last buy price          (pct change)
+    - margin at avg sell price   (pct)
+              │
+    Decision scoring:
+    - below FAMA by >5%  → +2 pts
+    - near historical low → +2 pts
+    - healthy margin >20% → +1 pt
+    - above FAMA by >5%  → -2 pts
+    - above hist low >20% → -2 pts
+    - margin <12%         → -2 pts
+              │
+    Score ≥ 3 → BELI   Score 1-2 → BOLEH
+    Score 0   → NEGOTIATE   Score < 0 → PASS
+              │
+    Returns: decision + sell_price_healthy + capital_needed + natural_observation
+              │
+    Agent always appends:
+    "Modal yang perlu: RM X. Awak ada modal ni sekarang?"
+              │
+    If user says NO → get_financial_profile → Digital Niaga loan package
+```
+
+---
+
+## Financial Profile Engine (agent/finance.py)
+
+```
+[60 days of trades + receivables]
+              │
+              ▼
+[db_calc_financial_data()]
+    - avg_weekly_revenue_rm      (from trades WHERE type='sell')
+    - total_savings_rm           (buy price vs FAMA benchmark delta × kg)
+    - receivables_collection_rate_pct
+    - overdue_rate_pct
+    - avg_days_to_collect
+              │
+              ▼
+[calculate_financial_profile()]
+    Scoring (0-100):
+    - Revenue stability (CoV)    30 pts
+    - Data depth (14-90 days)    20 pts
+    - Collection rate            25 pts
+    - Overdue rate               15 pts
+    - Cash flow speed            10 pts
+              │
+    Eligibility: score ≥ 60 + data ≥ 14 days + revenue ≥ RM500/week
+              │
+              ▼
+    [Loan offer: 2× weekly revenue, max RM15,000, rounded to RM500]
+              │
+    Loan program: Agrobank Digital Niaga / AgroCash-i
+    - RM300M pool for Malaysian MSMEs
+    - Fully digital — no branch visit
+    - Consent-based transaction data sharing via Borong portal
+    - 3–5 business day decision
+    - Repayment: 30–90 days
+              │
+    Proactive via financial_profile_job (Sunday 10 AM)
+    OR on-demand via /trigger_finance, "profil saya", or capital-check flow
+```
+
+---
+
+## Web Search Engine (services/websearch.py)
+
+```
+query_type = "festival"
+    → Instant lookup from hardcoded 2026 Malaysian public holiday calendar
+    → Per-festival demand profiles (lead days, high-demand commodities)
+    → Best-match keyword resolution (longest keyword wins — prevents "raya"
+      matching past Aidilfitri instead of upcoming Aidiladha)
+    → Zero network calls, always instant
+
+query_type = "news"
+    → Build query variants: scoped ("X Malaysia harga sayur buah") → raw
+    → _ddg_news(): DDG news search → date-stamped articles
+    → _ddg_text(): DDG text search → supplement if news sparse
+    → Runs in thread executor (non-blocking for async event loop)
+    → 15s timeout, graceful fallback with reassuring message
+    → Returns up to 5 deduplicated results with title, snippet, date, URL
+```
+
+---
+
+## Proactive Scheduler Jobs
+
+| Job | Schedule | Fires when |
+|-----|----------|-----------|
+| Morning Brief | Daily 3:30 AM (KL) | Always |
+| Spoilage Check | 8 AM + 2 PM | days_remaining ≤ 2 AND qty > 20kg |
+| Velocity Alert | Every 4 hours | Stockout < 2 days OR slow-moving + expiry ≤ 5 days |
+| Credit Reminder | Daily 9 AM | Payment due today or overdue |
+| Monday Digest | Monday 7 AM | Always |
+| Financial Profile | Sunday 10 AM | Eligible + no offer sent in last 30 days |
 
 ---
 
@@ -150,12 +306,18 @@ This is the entire agent. No framework needed. GLM decides when to stop calling 
 
 | Decision | Choice | Why |
 |----------|--------|-----|
-| No LangChain | Custom loop | Clean code judges can read. 80 lines vs 800. |
-| SQLite not Postgres | SQLite | Zero infrastructure. File-based. Perfect for hackathon. |
-| Polling not webhook | Polling (dev) | No public URL needed for local dev |
-| GLM-4V Plus | Single model | Handles text + vision. One API, one integration. |
-| APScheduler | In-process | No Redis/Celery needed. Runs in same Python process. |
-| No frontend | Telegram is the UI | Target users are already on Telegram. Zero new app installs. |
+| No LangChain | Custom loop (80 lines) | Clean code judges can read |
+| Supabase + SQLite fallback | asyncpg + aiosqlite | Cloud prod, local dev |
+| Polling not webhook | Polling (dev) | No public URL needed |
+| APScheduler in-process | No Celery/Redis | Simple deployment |
+| Commodity insight = no extra GLM call | Pure Python signals | Fast response, low latency |
+| Quote analysis = no extra GLM call | Rule-based scoring in agent/quote.py | Instant decision, predictable output |
+| Festival dates hardcoded | No network call | 100% reliable, instant |
+| Web search = ddgs library | Real DDG search (not Instant Answer API) | Returns actual news articles |
+| MAX_TOOL_ITERATIONS = 10 | Raised from 6 | General questions need 3-5 tools + final call |
+| Markdown fallback to plain text | try/except in _send_response | Prevents silent message drops |
+| BigInteger for user_id | BIGINT PK | Telegram IDs exceed int32 |
+| ACTIVE_USERS restored on startup | DB query at init | Scheduler works after restart |
 
 ---
 
@@ -163,10 +325,39 @@ This is the entire agent. No framework needed. GLM decides when to stop calling 
 
 ```
 BOT_TOKEN=          # From BotFather
-GLM_API_KEY=        # From open.bigmodel.cn
-DATABASE_URL=       # sqlite:///stocky_ai.db
-DEFAULT_CITY=       # Kuala Lumpur (for weather)
-MORNING_BRIEF_HOUR= # 3 (3:30 AM)
+ILMU_API_KEY=       # From console.ilmu.ai (or Groq key)
+ILMU_API_URL=       # https://api.ilmu.ai/v1
+MODEL_SMART=        # ilmu-glm-5.1
+MODEL_FAST=         # ilmu-glm-5.1
+SUPABASE_DB_URL=    # postgresql://... (falls back to SQLite)
+DEFAULT_CITY=       # Kuala Lumpur
+MORNING_BRIEF_HOUR= # 3
 MORNING_BRIEF_MIN=  # 30
-LOG_LEVEL=          # INFO
+DEMO_MODE=          # False
 ```
+
+---
+
+## External Services
+
+| Service | Purpose | Auth |
+|---------|---------|------|
+| ILMU / Groq API | LLM reasoning + tool calling | API key |
+| Open-Meteo | 5-day weather forecast | None (free) |
+| faster-whisper | Voice transcription (local) | None |
+| Supabase | PostgreSQL database | Connection string |
+| ddgs (DuckDuckGo) | Real web search — commodity news + disruption | None (free) |
+| Agrobank Digital Niaga | Embedded financing via Borong portal | User consent |
+| Stocky Dashboard | https://stocky-ai-dashboard.lovable.app/ | Public |
+
+---
+
+## Known Limitations (by design for hackathon)
+
+| Limitation | Impact | Production fix |
+|-----------|--------|----------------|
+| Conversation history is in-memory only | Lost on bot restart | Persist to DB (user_messages table) |
+| Morning brief uses first active user as persona | All users get same language/commodity brief | Per-user `run_proactive_brief` loop |
+| Polling mode (not webhook) | Slightly higher latency | Add webhook with a public URL |
+| Whisper tiny model | Lower accuracy on strong accents | Upgrade to base or small model |
+| FAMA benchmarks seeded weekly by hand | Not live | Scrape FAMA portal on schedule |
