@@ -139,7 +139,6 @@ async def process_onboarding_answer(user_id: int, text: str) -> tuple[str, bool]
 def build_profile_block(persona: dict) -> str:
     """Build the USER PROFILE section to inject into the system prompt."""
     name = persona.get("name", "")
-    language = persona.get("language", "English")
     commodities = persona.get("commodities", [])
     city = persona.get("city", "Kuala Lumpur")
     commodities_str = ", ".join(commodities) if commodities else "not specified"
@@ -149,12 +148,10 @@ def build_profile_block(persona: dict) -> str:
 USER PROFILE
 ═══════════════════════════════════════
 Name: {name}
-Preferred language: {language}
 Main commodities: {commodities_str}
 City: {city}
 
 Always address the user as "{name}".
-Always respond in {language}, regardless of what language they write in.
 When giving inventory alerts or buy recommendations, prioritise: {commodities_str}.
 Default city for weather forecasts: {city}.
 """.strip()

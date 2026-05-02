@@ -8,7 +8,7 @@ import logging
 from telegram.ext import ApplicationBuilder, MessageHandler, CallbackQueryHandler, filters, CommandHandler
 
 from config import BOT_TOKEN, validate
-from bot.handlers import handle_message, handle_callback, handle_start, handle_command_trigger
+from bot.handlers import handle_message, handle_callback, handle_start, handle_command_trigger, handle_command_finance, handle_help, ACTIVE_USERS
 from db.models import init_db
 from db.seed import seed_demo_data
 from scheduler.jobs import start_scheduler
@@ -21,12 +21,19 @@ logger = logging.getLogger(__name__)
 
 
 async def post_init(application):
-    """Runs after bot starts — init DB, seed data, start scheduler."""
+    """Runs after bot starts — init DB, seed data, restore users, start scheduler."""
     logger.info("Initialising database...")
     await init_db()
 
     logger.info("Seeding demo data (skips if already seeded)...")
     await seed_demo_data()
+
+    # Restore ACTIVE_USERS from DB so the scheduler has targets even after a restart
+    from db.queries import db_get_all_user_ids
+    persisted = await db_get_all_user_ids()
+    ACTIVE_USERS.update(persisted)
+    if persisted:
+        logger.info(f"✅ Restored {len(persisted)} active user(s) from DB: {persisted}")
 
     logger.info("Starting proactive scheduler...")
     start_scheduler(application.bot)
@@ -46,7 +53,9 @@ def main():
 
     # Commands
     app.add_handler(CommandHandler("start", handle_start))
-    app.add_handler(CommandHandler("trigger_brief", handle_command_trigger))  # demo shortcut
+    app.add_handler(CommandHandler("help", handle_help))
+    app.add_handler(CommandHandler("trigger_brief", handle_command_trigger))    # demo shortcut
+    app.add_handler(CommandHandler("trigger_finance", handle_command_finance))  # finance demo
 
     # Messages (photo removed — ILMU models don't support vision)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))

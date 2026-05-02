@@ -154,11 +154,71 @@ TOOLS = [
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_financial_profile",
+            "description": "Compute the trader's financial profile and loan eligibility from their transaction history. Call when user asks about their financial standing, savings, credit score, loan eligibility, 'profil saya', 'am I eligible', 'berapa saya jimat', or 'mohon pinjaman'.",
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_commodity_insight",
+            "description": "Cross-signal analysis for ONE commodity: velocity trend, stockout timing, expiry risk, supplier price trend vs FAMA. Call this for ANY commodity-specific query BEFORE responding. Returns a pre-formed observation — weave it naturally into your response, not as bullet points.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "commodity": {"type": "string", "description": "e.g. 'tomato', 'cili', 'bayam'"}
+                },
+                "required": ["commodity"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_supplier_quote",
+            "description": (
+                "Benchmark an incoming supplier price quote. Call this whenever a supplier "
+                "sends a price (via forwarded message or typed quote). Compares quoted price "
+                "against historical lowest buy price, FAMA benchmark, and actual sell price. "
+                "Returns: buy/negotiate/pass decision, margin analysis, suggested sell price, "
+                "and capital needed. ALWAYS call this before responding to any price quote."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "commodity":       {"type": "string", "description": "e.g. 'tomato', 'cili'"},
+                    "quoted_price_rm": {"type": "number", "description": "Price per kg in RM"},
+                    "quantity_kg":     {"type": "number", "description": "Quantity offered (if mentioned)"},
+                    "supplier_name":   {"type": "string", "description": "Supplier name (if known)"},
+                },
+                "required": ["commodity", "quoted_price_rm"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_market_news",
+            "description": "Search for commodity disruption news (floods, supply shortage, price spike) or Malaysian festival dates and demand impact. Use query_type='festival' for Hari Raya / CNY / Deepavali date and demand questions. Use query_type='news' for supply disruption or market news.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query":      {"type": "string", "description": "e.g. 'banjir Kelantan tomato', 'hari raya aidilfitri', 'harga cili naik'"},
+                    "query_type": {"type": "string", "enum": ["news", "festival"], "description": "Use 'festival' for date/demand lookups, 'news' for disruption news"}
+                },
+                "required": ["query", "query_type"]
+            }
+        }
+    },
 ]
 
 # ── Dispatcher ────────────────────────────────────────────────────────────────
 
-async def execute_tool(name: str, args: dict) -> dict:
+async def execute_tool(name: str, args: dict, user_id: int = 0) -> dict:
     logger.info(f"Tool: {name}({args})")
     try:
         if name == "get_inventory":
@@ -183,6 +243,23 @@ async def execute_tool(name: str, args: dict) -> dict:
             from agent.instinct import get_instinct
             result = await get_instinct()
             return {"instinct": result}
+        elif name == "get_financial_profile":
+            from agent.finance import calculate_financial_profile
+            return await calculate_financial_profile(user_id=user_id)
+        elif name == "get_commodity_insight":
+            from agent.insight import get_commodity_insight
+            return await get_commodity_insight(args["commodity"])
+        elif name == "analyze_supplier_quote":
+            from agent.quote import analyze_supplier_quote
+            return await analyze_supplier_quote(
+                commodity=args["commodity"],
+                quoted_price_rm=args["quoted_price_rm"],
+                quantity_kg=args.get("quantity_kg"),
+                supplier_name=args.get("supplier_name"),
+            )
+        elif name == "search_market_news":
+            from services.websearch import search_market_news
+            return await search_market_news(args["query"], args.get("query_type", "news"))
         else:
             return {"error": f"Unknown tool: {name}"}
     except Exception as e:

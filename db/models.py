@@ -3,11 +3,17 @@ db/models.py — SQLAlchemy models for Stocky AI.
 Supports both Supabase (Postgres) and local SQLite fallback.
 Owner: Person 2
 """
+import ssl as _ssl
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Float, Boolean, Date, DateTime, Text
+from sqlalchemy import Column, Integer, BigInteger, String, Float, Boolean, Date, DateTime, Text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from config import DATABASE_URL
+
+# SSL context for asyncpg — Supabase pooler uses TLS but doesn't need hostname validation
+_ssl_ctx = _ssl.create_default_context()
+_ssl_ctx.check_hostname = False
+_ssl_ctx.verify_mode = _ssl.CERT_NONE
 
 
 def _make_engine():
@@ -28,7 +34,7 @@ def _make_engine():
             "max_overflow": 10,
             "pool_timeout": 30,
             "pool_recycle": 1800,
-            "connect_args": {"ssl": "require", "statement_cache_size":0},
+            "connect_args": {"ssl": _ssl_ctx, "statement_cache_size": 0},
         }
 
     return create_async_engine(url, echo=False, **kwargs)
@@ -109,13 +115,23 @@ class FamaBenchmark(Base):
 
 class UserProfile(Base):
     __tablename__ = "user_profiles"
-    user_id     = Column(Integer, primary_key=True)   # Telegram user_id
+    user_id     = Column(BigInteger, primary_key=True)   # Telegram user_id — BigInteger avoids int32 overflow
     name        = Column(String, nullable=True)
     language    = Column(String, default="English")
     commodities = Column(Text, nullable=True)          # JSON array e.g. '["tomato","bayam"]'
     city        = Column(String, default="Kuala Lumpur")
     created_at  = Column(DateTime, default=datetime.utcnow)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class LoanOffer(Base):
+    __tablename__ = "loan_offers"
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    user_id    = Column(BigInteger, nullable=False)
+    amount_rm  = Column(Float, nullable=False)
+    score      = Column(Integer, nullable=False)
+    status     = Column(String, default="pending")   # pending | applied | disbursed | declined
+    offered_at = Column(DateTime, default=datetime.utcnow)
 
 
 async def init_db():

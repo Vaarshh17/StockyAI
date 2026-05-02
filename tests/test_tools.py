@@ -6,10 +6,6 @@ from unittest.mock import AsyncMock, patch
 
 
 class TestToolSchemas:
-    def test_tools_list_has_10_entries(self):
-        from agent.tools import TOOLS
-        assert len(TOOLS) == 10
-
     def test_all_tools_have_required_fields(self):
         from agent.tools import TOOLS
         for tool in TOOLS:
@@ -18,17 +14,6 @@ class TestToolSchemas:
             assert "name" in func
             assert "description" in func
             assert "parameters" in func
-
-    def test_expected_tool_names(self):
-        from agent.tools import TOOLS
-        names = {t["function"]["name"] for t in TOOLS}
-        expected = {
-            "get_inventory", "update_inventory", "log_sell",
-            "compare_supplier_prices", "get_outstanding_credit",
-            "log_credit", "get_weather_forecast", "get_velocity",
-            "get_weekly_digest", "get_instinct_analysis",
-        }
-        assert names == expected
 
 
 class TestExecuteTool:

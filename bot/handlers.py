@@ -167,16 +167,88 @@ async def handle_command_trigger(update: Update, context: ContextTypes.DEFAULT_T
     await update.message.reply_text(text, parse_mode="Markdown")
 
 
+async def handle_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /help — Show all available features with example phrases.
+    """
+    text = (
+        "🌿 *Stocky AI — Apa yang saya boleh buat*\n\n"
+
+        "*📦 Inventori & Stok*\n"
+        "• \"Stok aku macam mana?\" — semak semua stok sekarang\n"
+        "• \"Tomato berapa hari lagi?\" — insight satu komoditi\n"
+        "• \"Ada risiko rosak tak?\" — cek bahaya rosak + cuaca\n\n"
+
+        "*🛒 Bekalan & Harga*\n"
+        "• Forward mesej harga dari pembekal → dapat keputusan BELI / PASS\n"
+        "• \"Nak beli cili, cadangkan pembekal\" — bandingkan harga pembekal\n\n"
+
+        "*💸 Kredit & Hutang*\n"
+        "• \"Sapa yang tak bayar lagi?\" — senarai hutang tertunggak\n"
+        "• \"Draft peringatan untuk Ali\" — draf mesej tuntutan bayaran\n\n"
+
+        "*💳 Kewangan & Pinjaman*\n"
+        "• \"Profil kewangan saya\" — skor kredit dari data perniagaan\n"
+        "• \"Mohon pinjaman\" — pakej permohonan Agrobank Digital Niaga\n"
+        "• \"Takda modal\" — cek kelayakan + pilihan alternatif\n\n"
+
+        "*📰 Berita & Festival*\n"
+        "• \"Ada berita banjir?\" — carian berita pasaran terkini\n"
+        "• \"Bila raya haji?\" — tarikh + komoditi yang akan naik permintaan\n\n"
+
+        "*📈 Laporan & Dashboard*\n"
+        "• \"Dashboard\" atau \"Laporan\" — pautan ke analytics penuh\n"
+        "• \"Digest minggu ni\" — ringkasan perniagaan 7 hari\n\n"
+
+        "*🎙️ Input Suara*\n"
+        "• Hantar nota suara — Stocky faham Melayu, Inggeris, Mandarin\n\n"
+
+        "*⚙️ Arahan*\n"
+        "`/trigger_brief morning` — jana morning brief sekarang\n"
+        "`/trigger_brief spoilage` — semak risiko rosak\n"
+        "`/trigger_brief velocity` — semak kelajuan jualan\n"
+        "`/trigger_brief credit` — semak pembayaran tertunggak\n"
+        "`/trigger_brief digest` — digest mingguan\n"
+        "`/trigger_finance` — profil kewangan & tawaran pinjaman"
+    )
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
+async def handle_command_finance(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    /trigger_finance — demo the financial profile + loan offer on demand.
+    Shows creditworthiness score, savings from FAMA, and loan eligibility.
+    """
+    user_id = update.effective_user.id
+    ACTIVE_USERS.add(user_id)
+
+    await update.message.chat.send_action("typing")
+    await update.message.reply_text("⏳ Mengira profil kewangan awak dari data perniagaan...")
+
+    from agent.finance import calculate_financial_profile, format_profile_message
+    from db.queries import db_get_persona
+
+    profile = await calculate_financial_profile(user_id)
+    persona = await db_get_persona(user_id)
+    name = persona.get("name", "Peniaga") if persona else "Peniaga"
+
+    text = format_profile_message(profile, name)
+    await update.message.reply_text(text, parse_mode="Markdown")
+
+
 async def _send_response(update: Update, response: dict):
     if response.get("needs_approval") and response.get("draft_id"):
         keyboard = approval_keyboard(response["draft_id"])
-        await update.message.reply_text(
-            response["text"],
-            reply_markup=keyboard,
-            parse_mode="Markdown"
-        )
+        try:
+            await update.message.reply_text(
+                response["text"], reply_markup=keyboard, parse_mode="Markdown"
+            )
+        except Exception:
+            await update.message.reply_text(response["text"], reply_markup=keyboard)
     else:
-        await update.message.reply_text(
-            format_response(response["text"]),
-            parse_mode="Markdown"
-        )
+        text = format_response(response["text"])
+        try:
+            await update.message.reply_text(text, parse_mode="Markdown")
+        except Exception:
+            # Markdown parse failed (unmatched * or _) — send as plain text
+            await update.message.reply_text(text)

@@ -64,8 +64,17 @@ def start_scheduler(bot):
         replace_existing=True,
     )
 
+    # 6. Financial Profile / Loan Offer — Sunday 10 AM weekly
+    _scheduler.add_job(
+        financial_profile_job,
+        CronTrigger(day_of_week="sun", hour=10, minute=0),
+        args=[bot],
+        id="financial_profile",
+        replace_existing=True,
+    )
+
     _scheduler.start()
-    logger.info("Scheduler started. Jobs registered: morning_brief, spoilage_check, velocity_alert, credit_reminder, monday_digest")
+    logger.info("Scheduler started. Jobs: morning_brief, spoilage_check, velocity_alert, credit_reminder, monday_digest, financial_profile")
 
 
 async def _send_to_all_users(bot, text: str):
@@ -109,7 +118,7 @@ async def spoilage_check_job(bot):
     rain_days = [f for f in forecast[:3] if f.get("is_rainy")]
     at_risk = [
         item for item in inventory
-        if item["days_remaining"] <= 2 and item["quantity_kg"] > 100
+        if item["days_remaining"] <= 2 and item["quantity_kg"] > 20
     ]
 
     if not at_risk:
@@ -140,20 +149,25 @@ async def velocity_alert_job(bot):
     alerts = []
     for item in inventory:
         commodity = item["commodity"]
-        velocity = await db_get_velocity(commodity)
-        avg_daily = velocity["avg_daily_kg"]
+        velocity_7d  = await db_get_velocity(commodity, days=7)
+        velocity_14d = await db_get_velocity(commodity, days=14)
+        avg_7d  = velocity_7d["avg_daily_kg"]
+        avg_14d = velocity_14d["avg_daily_kg"]
 
-        if avg_daily <= 0:
-            continue
+        # Fast-moving: stockout within 2 days
+        if avg_7d > 0:
+            days_to_stockout = item["quantity_kg"] / avg_7d
+            if days_to_stockout < 2:
+                alerts.append(
+                    f"⚡ *{commodity.title()}* jual {avg_7d:.0f}kg/hari — "
+                    f"stok *habis dalam {days_to_stockout:.1f} hari*. Perlu restock segera."
+                )
 
-        # Calculate days until stockout
-        days_to_stockout = item["quantity_kg"] / avg_daily if avg_daily > 0 else 999
-
-        # Alert: stockout within 2 days
-        if days_to_stockout < 2:
+        # Slow-moving: velocity dropped >40% from 14d baseline AND expiry within 5 days
+        elif avg_14d > 0 and avg_7d < avg_14d * 0.6 and item["days_remaining"] <= 5 and item["quantity_kg"] > 50:
             alerts.append(
-                f"⚡ *{commodity.title()}* jual {avg_daily:.0f}kg/hari. "
-                f"Stok *habis dalam {days_to_stockout:.1f} hari*. Perlu restock segera."
+                f"⚠️ *{commodity.title()}* jual perlahan — {item['quantity_kg']:.0f}kg "
+                f"akan rosak dalam {item['days_remaining']} hari. Turunkan harga atau tawar ke pembeli."
             )
 
     if alerts:
@@ -191,3 +205,38 @@ async def monday_digest_job(bot):
     from agent.core import run_proactive_brief
     text = await run_proactive_brief(user_id, "digest")
     await _send_to_all_users(bot, text)
+
+
+async def financial_profile_job(bot):
+    """Sunday 10 AM — Send proactive loan offer if trader is eligible and hasn't been offered recently."""
+    logger.info("Running financial profile check...")
+    if not ACTIVE_USERS:
+        return
+
+    from agent.finance import calculate_financial_profile, format_loan_offer_message
+    from db.queries import db_get_latest_loan_offer, db_save_loan_offer, db_get_persona
+    from datetime import datetime, timedelta
+
+    for user_id in list(ACTIVE_USERS):
+        try:
+            profile = await calculate_financial_profile(user_id)
+            if not profile["eligible_for_loan"]:
+                continue
+
+            # Suppress if an offer was already sent in the last 30 days
+            last_offer = await db_get_latest_loan_offer(user_id)
+            if last_offer:
+                offered_at = datetime.fromisoformat(last_offer["offered_at"])
+                if datetime.utcnow() - offered_at < timedelta(days=30):
+                    logger.info(f"Skipping user {user_id} — offer sent within 30 days")
+                    continue
+
+            persona = await db_get_persona(user_id)
+            name = persona.get("name", "Peniaga") if persona else "Peniaga"
+
+            await db_save_loan_offer(user_id, profile["loan_amount_rm"], profile["creditworthiness_score"])
+            text = format_loan_offer_message(profile, name)
+            await bot.send_message(chat_id=user_id, text=text, parse_mode="Markdown")
+            logger.info(f"Loan offer sent to user {user_id}: RM{profile['loan_amount_rm']}")
+        except Exception as e:
+            logger.error(f"Financial profile job failed for user {user_id}: {e}")

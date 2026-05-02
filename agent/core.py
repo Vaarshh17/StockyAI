@@ -21,7 +21,7 @@ from agent.memory import get_history, save_turn, save_draft
 from agent.persona import get_persona, load_persona
 
 logger = logging.getLogger(__name__)
-MAX_TOOL_ITERATIONS = 6
+MAX_TOOL_ITERATIONS = 10
 
 
 async def run_agent(
@@ -78,7 +78,7 @@ async def run_agent(
             name = tc["function"]["name"]
             args = json.loads(tc["function"]["arguments"])
             logger.info(f"[agent]   → calling {name}({args})")
-            result = await execute_tool(name, args)
+            result = await execute_tool(name, args, user_id=user_id)
             logger.info(f"[agent]   ← {name} returned: {str(result)[:120]}")
             messages.append({
                 "role": "tool",
@@ -137,6 +137,12 @@ async def run_proactive_brief(user_id: int, brief_type: str = "morning") -> str:
             "Sertakan: pendapatan minggu ini vs minggu lalu, komoditi terbaik/terburuk, "
             "kredit tertunggak, dan SATU penemuan penting yang mungkin peniaga tidak perasan."
         ),
+        "finance": (
+            "Pengguna ingin tahu profil kewangan dan kelayakan pinjaman mereka. "
+            "Panggil get_financial_profile, kemudian bentangkan keputusan dengan jelas: "
+            "skor kewangan, jumlah jimat dari FAMA, dan sama ada mereka layak untuk AgroCash-i. "
+            "Jika layak, nyatakan jumlah pinjaman dan jemput mereka untuk mohon."
+        ),
     }
 
     # Simple jobs (spoilage, velocity, credit) → fast model
@@ -158,6 +164,25 @@ async def run_proactive_brief(user_id: int, brief_type: str = "morning") -> str:
         instinct = await get_instinct()
         if instinct:
             text += f"\n\n🔮 {instinct}"
+
+    # Append savings footer to morning brief
+    if brief_type == "morning":
+        try:
+            from db.queries import db_calc_financial_data
+            from agent.finance import format_savings_footer
+            fin = await db_calc_financial_data()
+            footer = format_savings_footer(fin["total_savings_30d_rm"])
+            if footer:
+                text += footer
+        except Exception:
+            pass
+
+    # Append dashboard link to weekly digest
+    if brief_type == "digest":
+        text += (
+            "\n\n📈 *Dashboard Penuh:*"
+            "\nhttps://stocky-ai-dashboard.lovable.app/"
+        )
 
     return text
 
