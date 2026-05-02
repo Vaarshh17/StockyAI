@@ -43,13 +43,12 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-        id: login-ecr
       - uses: aws-actions/amazon-ecr-login@v2
 
-        run: docker build -t ${{ secrets.ECR_REPOSITORY }} .
-        run: |
+      - run: docker build -t ${{ secrets.ECR_REPOSITORY }} .
+      - run: |
           docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
           ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
-        run: |
+      - run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/${{ secrets.ECR_REPOSITORY }}:latest
 
