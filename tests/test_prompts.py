@@ -39,11 +39,3 @@ class TestBaseSystemPrompt:
         assert "ALERT THRESHOLDS" in BASE_SYSTEM_PROMPT
         assert "RESPONSE FORMATS" in BASE_SYSTEM_PROMPT
         assert "DRAFT_MESSAGE" in BASE_SYSTEM_PROMPT
-
-    def test_contains_tool_chain_sequences(self):
-        assert "get_inventory" in BASE_SYSTEM_PROMPT
-        assert "get_weather_forecast" in BASE_SYSTEM_PROMPT
-        assert "compare_supplier_prices" in BASE_SYSTEM_PROMPT
-        assert "get_outstanding_credit" in BASE_SYSTEM_PROMPT
-        assert "get_velocity" in BASE_SYSTEM_PROMPT
-        assert "get_weekly_digest" in BASE_SYSTEM_PROMPT

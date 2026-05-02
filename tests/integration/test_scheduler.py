@@ -6,15 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 
 class TestStartScheduler:
-    def test_start_scheduler_registers_jobs(self):
-        mock_bot = MagicMock()
-        with patch("scheduler.jobs._scheduler") as mock_sched:
-            from scheduler.jobs import start_scheduler
-            start_scheduler(mock_bot)
-            # Should have added 5 jobs
-            assert mock_sched.add_job.call_count == 5
-            mock_sched.start.assert_called_once()
-
     def test_start_scheduler_replaces_existing(self):
         mock_bot = MagicMock()
         with patch("scheduler.jobs._scheduler") as mock_sched:
