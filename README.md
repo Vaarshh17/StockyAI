@@ -128,7 +128,7 @@ stocky_ai/
 ├── scheduler/      # ⏰ 6 proactive jobs (morning, spoilage, velocity, credit, digest, finance)
 ├── services/       # 🔌 ILMU API, weather, voice, FAMA, web search (ddgs)
 ├── scripts/        # 🔧 Test utilities (check_inventory, test_websearch, test_quote)
-└── docs/           # 📃 PRD, SAD, TAD documentation
+└── docs/           # 📃 Deployment, Testing and business proposal
 ```
 
 ---
