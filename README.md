@@ -99,18 +99,12 @@ Full business analytics at **https://stocky-ai-dashboard.lovable.app/** — inje
 
 ---
 
-## Powered by ILMU (Z.ai / YTL AI Labs)
-
-`ilmu-glm-5.1` is the reasoning core. Without it, this is just a database.  
-With it, it synthesizes weather + velocity + shelf life + supplier history + credit + news into a decision — and explains why.
-
----
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| AI Model | ilmu-glm-5.1 (ILMU API by Z.ai / YTL AI Labs) |
+| AI Model | ilmu-nemu-super|
 | Bot | python-telegram-bot v20 |
 | Backend | Python (async) |
 | Database | Supabase (Postgres via asyncpg) + SQLite fallback |
