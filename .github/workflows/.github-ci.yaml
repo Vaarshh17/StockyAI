@@ -47,7 +47,7 @@ jobs:
 
       - run: docker build -t ${{ vars.ECR_REPOSITORY }} .
       - run: |
-          docker tag ${{ secrets.ECR_REPOSITORY }}:latest \
+          docker tag ${{ vars.ECR_REPOSITORY }}:latest \
           ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com/${{ vars.ECR_REPOSITORY }}:latest
       - run: |
           docker push ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ vars.AWS_REGION }}.amazonaws.com/${{ vars.ECR_REPOSITORY }}:latest
