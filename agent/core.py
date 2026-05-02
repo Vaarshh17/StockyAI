@@ -85,7 +85,7 @@ async def run_agent(
                 "tool_call_id": tc["id"],
                 "content": json.dumps(result, ensure_ascii=False, default=str),
             })
-            time.sleep(3)
+            # time.sleep(4)
     else:
         logger.warning(f"[agent] ⚠️  Max tool iterations ({MAX_TOOL_ITERATIONS}) hit for user {user_id}")
 
